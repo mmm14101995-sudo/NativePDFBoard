@@ -53,14 +53,20 @@ class InkView(ctx: Context) : View(ctx) {
         onChanged?.invoke()
     }
 
+    // الصفحة المسموح فيها بالكتابة بتملأ الشاشة كلها دايماً، والتكبير بيتعمل على الصفحة كلها زي الـ PDF
+    // السبورة الفاضية بتملأ الشاشة كلها. صفحة الـ PDF بتتعرض بنسبتها من غير ما تتشوّه
     private fun computePageRect() {
-        val ratio = pageBitmap?.let { it.height.toFloat() / it.width } ?: 1.414f
-        val maxW = width - 24f
-        val maxH = height - 24f
-        var w = maxW
+        if (width <= 0 || height <= 0) return
+        val bmp = pageBitmap
+        if (bmp == null) {
+            pageRect.set(0f, 0f, width.toFloat(), height.toFloat())
+            return
+        }
+        val ratio = bmp.height.toFloat() / bmp.width
+        var w = width.toFloat()
         var h = w * ratio
-        if (h > maxH) {
-            h = maxH
+        if (h > height) {
+            h = height.toFloat()
             w = h / ratio
         }
         val l = (width - w) / 2f
@@ -219,11 +225,20 @@ class InkView(ctx: Context) : View(ctx) {
 
     private fun dist(a: PointF, b: PointF): Float = Math.hypot((a.x - b.x).toDouble(), (a.y - b.y).toDouble()).toFloat()
 
+    // زي الـ PDF: لو الصفحة أكبر من الشاشة التحريك بيقف عند حوافها، ولو أصغر بتفضل في النص
     private fun clampPan() {
-        if (zoom <= 1.001f) {
-            zoom = 1f
-            panX = 0f
-            panY = 0f
+        if (pageRect.width() <= 0f) return
+        val pw = pageRect.width() * zoom
+        val ph = pageRect.height() * zoom
+        panX = if (pw > width) {
+            panX.coerceIn(width - (pageRect.left + pageRect.width()) * zoom, -pageRect.left * zoom)
+        } else {
+            (width - pw) / 2f - pageRect.left * zoom
+        }
+        panY = if (ph > height) {
+            panY.coerceIn(height - (pageRect.top + pageRect.height()) * zoom, -pageRect.top * zoom)
+        } else {
+            (height - ph) / 2f - pageRect.top * zoom
         }
     }
 
@@ -249,7 +264,7 @@ class InkView(ctx: Context) : View(ctx) {
         val d = dist(a, b).coerceAtLeast(1f)
         val mx = (a.x + b.x) / 2f
         val my = (a.y + b.y) / 2f
-        zoom = (pinchZoom * d / pinchD).coerceIn(1f, 5f)
+        zoom = (pinchZoom * d / pinchD).coerceIn(0.5f, 5f)
         panX = mx - pinchPre.x * zoom
         panY = my - pinchPre.y * zoom
         clampPan()

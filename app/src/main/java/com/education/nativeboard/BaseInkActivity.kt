@@ -22,12 +22,14 @@ abstract class BaseInkActivity : Activity() {
     private val redo = ArrayList<ArrayList<Stroke>>()
     private var sizeIdx = 1
     private var colorIdx = 0
-    private val quickPens = intArrayOf(0, 1, 2, 8, 10)
-    private val penBtns = ArrayList<TextView>()
+    private val quickPens = intArrayOf(0, 3, 7, 8, 6)
+    private val quickKinds = arrayOf("fountain", "fineliner", "marker", "highlighter", "pencil")
+    private val quickColors = intArrayOf(0xFFF97316.toInt(), 0xFF111827.toInt(), 0xFF8B5CF6.toInt(), 0xFF06B6D4.toInt(), 0xFFFACC15.toInt())
+    private val penViews = ArrayList<PenIconView>()
     private lateinit var pageLabel: TextView
     private lateinit var undoBtn: TextView
     private lateinit var redoBtn: TextView
-    private lateinit var eraseBtn: TextView
+    private lateinit var eraseBtn: View
     private lateinit var colorBtn: TextView
     private lateinit var sizeBtn: TextView
     private lateinit var bar: View
@@ -65,15 +67,19 @@ abstract class BaseInkActivity : Activity() {
         row.addView(pageLabel)
         row.addView(Ui.btn(this, "السابقة →") { goPage(pageNo - 1) })
         row.addView(Ui.sep(this))
-        for (p in quickPens) {
-            val t = Ui.btn(this, Pens.ALL[p].name) { selectPen(p) }
-            penBtns.add(t)
-            row.addView(t)
+        for (i in quickPens.indices) {
+            val pv = PenIconView(this, quickKinds[i], quickColors[i])
+            pv.layoutParams = LinearLayout.LayoutParams(Ui.dp(this, 40), Ui.dp(this, 50)).apply {
+                setMargins(Ui.dp(this@BaseInkActivity, 2), 0, Ui.dp(this@BaseInkActivity, 2), 0)
+            }
+            pv.setOnClickListener { selectPen(i) }
+            penViews.add(pv)
+            row.addView(pv)
         }
         row.addView(Ui.sep(this))
         colorBtn = Ui.btn(this, "●") { cycleColor() }
         sizeBtn = Ui.btn(this, "حجم") { cycleSize() }
-        eraseBtn = Ui.btn(this, "ممحاة") { toggleEraser() }
+        eraseBtn = Ui.penButton(this, "eraser") { toggleEraser() }
         row.addView(colorBtn)
         row.addView(sizeBtn)
         row.addView(eraseBtn)
@@ -118,8 +124,9 @@ abstract class BaseInkActivity : Activity() {
         refreshBar()
     }
 
-    private fun selectPen(p: Int) {
-        view.penIndex = p
+    private fun selectPen(i: Int) {
+        view.penIndex = quickPens[i]
+        view.ink = quickColors[i]
         view.eraserMode = false
         refreshBar()
     }
@@ -168,8 +175,8 @@ abstract class BaseInkActivity : Activity() {
         eraseBtn.alpha = if (view.eraserMode) 1f else 0.6f
         colorBtn.setTextColor(Ui.INKS[colorIdx])
         sizeBtn.text = "حجم " + Ui.SIZES[sizeIdx].toInt()
-        penBtns.forEachIndexed { i, t ->
-            t.alpha = if (!view.eraserMode && view.penIndex == quickPens[i]) 1f else 0.6f
+        penViews.forEachIndexed { i, pv ->
+            pv.selected = !view.eraserMode && view.penIndex == quickPens[i] && view.ink == quickColors[i]
         }
     }
 
