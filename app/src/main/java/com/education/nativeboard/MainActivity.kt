@@ -4,16 +4,18 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
 import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
 import android.provider.OpenableColumns
 import android.view.Gravity
 import android.view.View
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 
-// المكتبة: الـ PDF والسبورات، وإضافة وحذف
+// المكتبة: كروت زجاجية لكل PDF وسبورة، بأيقونات واضحة
 class MainActivity : Activity() {
     private val reqPdf = 7
     private lateinit var list: LinearLayout
@@ -21,37 +23,50 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Ui.immersive(this)
-        val pad = Ui.dp(this, 16)
 
-        val root = LinearLayout(this).apply {
+        val root = FrameLayout(this)
+        root.background = GradientDrawable(
+            GradientDrawable.Orientation.TOP_BOTTOM,
+            intArrayOf(Color.parseColor("#0B1020"), Color.parseColor("#111A33"))
+        )
+
+        val col = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.parseColor("#0b1120"))
-            setPadding(pad, Ui.dp(this@MainActivity, 36), pad, pad)
+            setPadding(Ui.dp(this@MainActivity, 18), Ui.dp(this@MainActivity, 40), Ui.dp(this@MainActivity, 18), Ui.dp(this@MainActivity, 14))
         }
 
-        val title = TextView(this).apply {
-            text = "المكتبة"
-            setTextColor(Color.WHITE)
-            textSize = 24f
-            setPadding(0, 0, 0, Ui.dp(this@MainActivity, 12))
-        }
-        root.addView(title)
-
-        val actions = LinearLayout(this).apply {
+        // الرأس: الشعار + العنوان + أزرار الإضافة (بالرموز)
+        val header = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-        actions.addView(Ui.btn(this, "+ إضافة PDF") { pickPdf() })
-        actions.addView(Ui.btn(this, "+ سبورة جديدة") { newBoard() })
-        root.addView(actions)
+        val logo = FrameLayout(this).apply {
+            background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(Color.parseColor("#38BDF8"), Color.parseColor("#6366F1"))).apply {
+                cornerRadius = Ui.dp(this@MainActivity, 14).toFloat()
+            }
+            addView(IconView(this@MainActivity, "board", Color.WHITE), FrameLayout.LayoutParams(Ui.dp(this@MainActivity, 26), Ui.dp(this@MainActivity, 26), Gravity.CENTER))
+            layoutParams = LinearLayout.LayoutParams(Ui.dp(this@MainActivity, 46), Ui.dp(this@MainActivity, 46))
+        }
+        val title = TextView(this).apply {
+            text = "السبورة والكتب"
+            setTextColor(Color.WHITE)
+            textSize = 20f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setPadding(Ui.dp(this@MainActivity, 12), 0, 0, 0)
+        }
+        header.addView(logo)
+        header.addView(title, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        header.addView(Ui.iconWell(this, IconView(this, "pdf", Color.WHITE)) { pickPdf() })
+        header.addView(Ui.iconWell(this, IconView(this, "plus", Color.WHITE)) { newBoard() })
+        col.addView(header, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+            setMargins(0, 0, 0, Ui.dp(this@MainActivity, 16))
+        })
 
         list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        val scroll = ScrollView(this).apply {
-            setPadding(0, Ui.dp(this@MainActivity, 12), 0, 0)
-            addView(list)
-        }
-        root.addView(scroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+        val scroll = ScrollView(this).apply { addView(list) }
+        col.addView(scroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
 
+        root.addView(col, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
         setContentView(root)
     }
 
@@ -70,42 +85,69 @@ class MainActivity : Activity() {
         val pdfs = Store.listPdfs(this)
         val boards = Store.listBoards(this)
         if (pdfs.isEmpty() && boards.isEmpty()) {
-            list.addView(TextView(this).apply {
-                text = "لا توجد ملفات بعد.\nاضغط + إضافة PDF أو + سبورة جديدة."
-                setTextColor(0xAAFFFFFF.toInt())
-                textSize = 15f
-                setPadding(0, Ui.dp(this@MainActivity, 40), 0, 0)
+            val empty = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                setPadding(0, Ui.dp(this@MainActivity, 60), 0, 0)
+            }
+            empty.addView(FrameLayout(this).apply {
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setColor(0x14FFFFFF)
+                    setStroke(Ui.dp(this@MainActivity, 1), 0x33FFFFFF)
+                }
+                addView(IconView(this@MainActivity, "board", 0xAAFFFFFF.toInt()), FrameLayout.LayoutParams(Ui.dp(this@MainActivity, 44), Ui.dp(this@MainActivity, 44), Gravity.CENTER))
+                layoutParams = LinearLayout.LayoutParams(Ui.dp(this@MainActivity, 110), Ui.dp(this@MainActivity, 110))
             })
+            list.addView(empty)
         }
         pdfs.forEach { id ->
-            addRow(id.substringAfter("__", id), "PDF", { openReader(id) }, { confirmDelete(id, false, id.substringAfter("__", id)) })
+            val name = id.substringAfter("__", id)
+            addCard("pdf", Color.parseColor("#38BDF8"), Color.parseColor("#6366F1"), name, "PDF", { openReader(id) }, { confirmDelete(id, false, name) })
         }
         boards.forEachIndexed { i, id ->
-            addRow("سبورة ${i + 1}", "سبورة فاضية", { openBoard(id) }, { confirmDelete(id, true, "سبورة ${i + 1}") })
+            val name = "سبورة ${i + 1}"
+            addCard("board", Color.parseColor("#A78BFA"), Color.parseColor("#EC4899"), name, "سبورة فاضية", { openBoard(id) }, { confirmDelete(id, true, name) })
         }
     }
 
-    private fun addRow(title: String, sub: String, onOpen: () -> Unit, onDelete: () -> Unit) {
+    private fun addCard(icon: String, c1: Int, c2: Int, title: String, sub: String, onOpen: () -> Unit, onDelete: () -> Unit) {
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            background = Ui.pill(this@MainActivity, 0x14FFFFFF, 16)
-            setPadding(Ui.dp(this@MainActivity, 14), Ui.dp(this@MainActivity, 12), Ui.dp(this@MainActivity, 8), Ui.dp(this@MainActivity, 12))
+            background = GradientDrawable().apply {
+                cornerRadius = Ui.dp(this@MainActivity, 18).toFloat()
+                setColor(0x14FFFFFF)
+                setStroke(Ui.dp(this@MainActivity, 1), 0x22FFFFFF)
+            }
+            setPadding(Ui.dp(this@MainActivity, 12), Ui.dp(this@MainActivity, 12), Ui.dp(this@MainActivity, 8), Ui.dp(this@MainActivity, 12))
             setOnClickListener { onOpen() }
         }
-        val text = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        text.addView(TextView(this).apply {
-            this.text = title
-            setTextColor(Color.WHITE)
-            textSize = 17f
-        })
-        text.addView(TextView(this).apply {
-            this.text = sub
-            setTextColor(0x99FFFFFF.toInt())
-            textSize = 13f
-        })
+        val tile = FrameLayout(this).apply {
+            background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(c1, c2)).apply {
+                cornerRadius = Ui.dp(this@MainActivity, 14).toFloat()
+            }
+            addView(IconView(this@MainActivity, icon, Color.WHITE), FrameLayout.LayoutParams(Ui.dp(this@MainActivity, 26), Ui.dp(this@MainActivity, 26), Gravity.CENTER))
+            layoutParams = LinearLayout.LayoutParams(Ui.dp(this@MainActivity, 52), Ui.dp(this@MainActivity, 52))
+        }
+        val text = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(Ui.dp(this@MainActivity, 14), 0, 0, 0)
+            addView(TextView(this@MainActivity).apply {
+                text = title
+                setTextColor(Color.WHITE)
+                textSize = 17f
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+            })
+            addView(TextView(this@MainActivity).apply {
+                text = sub
+                setTextColor(0x99FFFFFF.toInt())
+                textSize = 13f
+            })
+        }
+        row.addView(tile)
         row.addView(text, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-        row.addView(Ui.btn(this, "حذف") { onDelete() })
+        row.addView(Ui.iconWell(this, IconView(this, "trash", Color.parseColor("#FCA5A5"))) { onDelete() })
         val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
         lp.setMargins(0, 0, 0, Ui.dp(this, 10))
         list.addView(row, lp)

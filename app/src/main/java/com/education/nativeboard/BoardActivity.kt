@@ -7,7 +7,7 @@ import android.graphics.Color
 import android.os.Bundle
 import android.widget.LinearLayout
 
-// سبورة فاضية بصفحات كتير ولون خلفية تختاره
+// سبورة فاضية بصفحات كتير، ولون خلفية تختاره، ومكتبة صور علمية
 class BoardActivity : BaseInkActivity() {
 
     override fun pageTotal(): Int = doc.pageCount
@@ -31,6 +31,13 @@ class BoardActivity : BaseInkActivity() {
         view.pageBitmap = if (file == null) null else loadLibraryImage(file)
     }
 
+    // الأزرار الإضافية للسبورة: صفحة جديدة، لون الخلفية، المكتبة (كلها رموز)
+    override fun extraButtons(row: LinearLayout) {
+        row.addView(Ui.iconWell(this, IconView(this, "plus", ICON)) { addPage() })
+        row.addView(Ui.iconWell(this, IconView(this, "palette", ICON)) { pickBackground() })
+        row.addView(Ui.iconWell(this, IconView(this, "library", ICON)) { pickFromLibrary() })
+    }
+
     // تحميل الصورة بدقة تناسب الشاشة (مش أصغر ومش أكبر من اللازم)
     private fun loadLibraryImage(file: String): Bitmap? {
         return try {
@@ -40,17 +47,14 @@ class BoardActivity : BaseInkActivity() {
             val target = 2048
             var sample = 1
             while (maxSide / (sample * 2) >= target) sample *= 2
-            val opts = BitmapFactory.Options().apply { inSampleSize = sample; inPreferredConfig = Bitmap.Config.ARGB_8888 }
+            val opts = BitmapFactory.Options().apply {
+                inSampleSize = sample
+                inPreferredConfig = Bitmap.Config.ARGB_8888
+            }
             assets.open("library/$file").use { BitmapFactory.decodeStream(it, null, opts) }
         } catch (e: Exception) {
             null
         }
-    }
-
-    override fun extraButtons(row: LinearLayout) {
-        row.addView(Ui.btn(this, "+ صفحة") { addPage() })
-        row.addView(Ui.btn(this, "لون السبورة") { pickBackground() })
-        row.addView(Ui.btn(this, "مكتبة علمية") { pickFromLibrary() })
     }
 
     private fun addPage() {
@@ -60,7 +64,7 @@ class BoardActivity : BaseInkActivity() {
     }
 
     private fun pickBackground() {
-        Glass.swatchDialog(this, "لون السبورة", Ui.BG_PALETTE, doc.bg) { c ->
+        Glass.swatchDialog(this, "", Ui.BG_PALETTE, doc.bg) { c ->
             doc.bg = c
             view.bgColor = c
             if (Ui.isDark(c) && Ui.isDark(view.ink)) view.ink = Color.WHITE
@@ -79,7 +83,7 @@ class BoardActivity : BaseInkActivity() {
         }
         if (items.isEmpty()) {
             AlertDialog.Builder(this)
-                .setMessage("المكتبة فاضية حالياً. ضيف صور في assets/library وسجّلها في library.json.")
+                .setMessage("المكتبة فاضية حالياً.")
                 .setPositiveButton("تمام", null)
                 .show()
             return

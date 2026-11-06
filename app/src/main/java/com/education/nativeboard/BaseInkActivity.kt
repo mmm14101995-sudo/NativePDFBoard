@@ -11,27 +11,29 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 
-// الشاشة المشتركة بين القارئ والسبورة: سطح الرسم + شريط الأدوات العايم + التراجع + الحفظ
+// الشاشة المشتركة بين القارئ والسبورة: سطح الرسم + شريط الرموز العايم + التراجع + الحفظ
 abstract class BaseInkActivity : Activity() {
     protected lateinit var doc: Doc
     protected lateinit var view: InkView
     protected var pageNo = 1
     protected var dirty = false
+    protected val ICON = Color.parseColor("#E2E8F0")
 
     private val undo = ArrayList<ArrayList<Stroke>>()
     private val redo = ArrayList<ArrayList<Stroke>>()
     private var sizeIdx = 1
     private val quickPens = intArrayOf(0, 3, 7, 8, 6)
     private val quickKinds = arrayOf("fountain", "fineliner", "marker", "highlighter", "pencil")
-    private val quickColors = intArrayOf(0xFFF97316.toInt(), 0xFF111827.toInt(), 0xFF8B5CF6.toInt(), 0xFF06B6D4.toInt(), 0xFFFACC15.toInt())
+    private val quickBodies = intArrayOf(0xFF334155.toInt(), 0xFF1E293B.toInt(), 0xFFDC2626.toInt(), 0xFFFACC15.toInt(), 0xFF64748B.toInt())
     private val penViews = ArrayList<PenIconView>()
     private lateinit var pageLabel: TextView
-    private lateinit var undoBtn: TextView
-    private lateinit var redoBtn: TextView
+    private lateinit var undoBtn: View
+    private lateinit var redoBtn: View
     private lateinit var eraseBtn: View
     private lateinit var colorBtn: View
     private lateinit var colorDot: View
-    private lateinit var sizeBtn: TextView
+    private lateinit var sizeBtn: View
+    private lateinit var sizeDot: View
     private lateinit var bar: View
     private lateinit var eye: View
     private lateinit var chev: ChevronView
@@ -63,36 +65,45 @@ abstract class BaseInkActivity : Activity() {
 
         val (scroll, row) = Ui.bar(this)
         bar = scroll
-        pageLabel = Ui.label(this)
-        row.addView(Ui.btn(this, "← التالية") { goPage(pageNo + 1) })
-        row.addView(pageLabel)
-        row.addView(Ui.btn(this, "السابقة →") { goPage(pageNo - 1) })
-        row.addView(Ui.sep(this))
-        for (i in quickPens.indices) {
-            val pv = PenIconView(this, quickKinds[i], quickColors[i])
-            pv.layoutParams = LinearLayout.LayoutParams(Ui.dp(this, 40), Ui.dp(this, 50)).apply {
-                setMargins(Ui.dp(this@BaseInkActivity, 2), 0, Ui.dp(this@BaseInkActivity, 2), 0)
-            }
-            pv.setOnClickListener { selectPen(i) }
-            penViews.add(pv)
-            row.addView(pv)
-        }
-        row.addView(Ui.sep(this))
-        colorDot = View(this)
-        colorBtn = Ui.iconWell(this, colorDot) { openInkPalette() }
-        sizeBtn = Ui.btn(this, "حجم") { cycleSize() }
-        eraseBtn = Ui.penButton(this, "eraser") { toggleEraser() }
-        row.addView(colorBtn)
-        row.addView(sizeBtn)
-        row.addView(eraseBtn)
-        row.addView(Ui.sep(this))
-        undoBtn = Ui.btn(this, "تراجع") { doUndo() }
-        redoBtn = Ui.btn(this, "إعادة") { doRedo() }
+
+        // تراجع وإعادة
+        undoBtn = Ui.iconWell(this, IconView(this, "undo", ICON)) { doUndo() }
+        redoBtn = Ui.iconWell(this, IconView(this, "redo", ICON)) { doRedo() }
         row.addView(undoBtn)
         row.addView(redoBtn)
-        extraButtons(row)
         row.addView(Ui.sep(this))
-        row.addView(Ui.btn(this, "✕ إغلاق") { closeWithPrompt() })
+
+        // الأقلام الخمسة بأشكالها
+        penViews.clear()
+        for (i in quickPens.indices) {
+            val pv = PenIconView(this, quickKinds[i], quickBodies[i])
+            penViews.add(pv)
+            row.addView(penSlot(pv, i))
+        }
+        row.addView(Ui.sep(this))
+
+        // لون الحبر (دايرة باللون الحالي) وحجم القلم (دايرة بحجمه)
+        colorDot = View(this)
+        colorBtn = Ui.iconWell(this, colorDot) { openInkPalette() }
+        row.addView(colorBtn)
+        sizeDot = View(this)
+        sizeBtn = Ui.iconWell(this, sizeDot) { cycleSize() }
+        row.addView(sizeBtn)
+
+        // الممحاة
+        eraseBtn = Ui.penButton(this, "eraser") { toggleEraser() }
+        row.addView(eraseBtn)
+        row.addView(Ui.sep(this))
+
+        // التنقل بين الصفحات
+        row.addView(Ui.iconWell(this, IconView(this, "next", ICON)) { goPage(pageNo + 1) })
+        pageLabel = Ui.label(this)
+        row.addView(pageLabel)
+        row.addView(Ui.iconWell(this, IconView(this, "prev", ICON)) { goPage(pageNo - 1) })
+        row.addView(Ui.sep(this))
+
+        extraButtons(row)
+        row.addView(Ui.iconWell(this, IconView(this, "close", ICON)) { closeWithPrompt() })
 
         val dp12 = Ui.dp(this, 12)
         val dp8 = Ui.dp(this, 8)
@@ -100,7 +111,7 @@ abstract class BaseInkActivity : Activity() {
             setMargins(dp8, 0, dp8, dp12)
         })
 
-        // زرار الإخفاء والإظهار للشريط
+        // زرار الإخفاء والإظهار: دايرة زجاجية بسهم
         val (eyeView, chevView) = Glass.glassButton(this, 46) { toggleBar() }
         eye = eyeView
         chev = chevView
@@ -110,6 +121,15 @@ abstract class BaseInkActivity : Activity() {
 
         setContentView(root)
         refreshBar()
+    }
+
+    private fun penSlot(pv: PenIconView, i: Int): FrameLayout = FrameLayout(this).apply {
+        background = Ui.pill(this@BaseInkActivity, 0x14FFFFFF, 14)
+        addView(pv, FrameLayout.LayoutParams(Ui.dp(this@BaseInkActivity, 28), Ui.dp(this@BaseInkActivity, 50), Gravity.CENTER))
+        layoutParams = LinearLayout.LayoutParams(Ui.dp(this@BaseInkActivity, 42), Ui.dp(this@BaseInkActivity, 56)).apply {
+            setMargins(Ui.dp(this@BaseInkActivity, 3), 0, Ui.dp(this@BaseInkActivity, 3), 0)
+        }
+        setOnClickListener { selectPen(i) }
     }
 
     protected fun markDirty() {
@@ -130,13 +150,12 @@ abstract class BaseInkActivity : Activity() {
 
     private fun selectPen(i: Int) {
         view.penIndex = quickPens[i]
-        view.ink = quickColors[i]
         view.eraserMode = false
         refreshBar()
     }
 
     private fun openInkPalette() {
-        Glass.swatchDialog(this, "لون الحبر", Ui.INK_PALETTE, view.ink) { c ->
+        Glass.swatchDialog(this, "", Ui.INK_PALETTE, view.ink) { c ->
             view.ink = c
             view.eraserMode = false
             refreshBar()
@@ -174,14 +193,16 @@ abstract class BaseInkActivity : Activity() {
 
     protected fun refreshBar() {
         if (!::view.isInitialized || !::pageLabel.isInitialized) return
-        pageLabel.text = "$pageNo / ${pageTotal()}"
+        pageLabel.text = "${pageNo}/${pageTotal()}"
         undoBtn.alpha = if (undo.isEmpty()) 0.35f else 1f
         redoBtn.alpha = if (redo.isEmpty()) 0.35f else 1f
         eraseBtn.alpha = if (view.eraserMode) 1f else 0.6f
         colorDot.background = Glass.oval(this, view.ink, 0xFFFFFFFF.toInt(), 2)
-        sizeBtn.text = "حجم " + Ui.SIZES[sizeIdx].toInt()
+        val d = arrayOf(6, 10, 16)[sizeIdx]
+        sizeDot.layoutParams = FrameLayout.LayoutParams(Ui.dp(this, d), Ui.dp(this, d), Gravity.CENTER)
+        sizeDot.background = Glass.oval(this, ICON)
         penViews.forEachIndexed { i, pv ->
-            pv.picked = !view.eraserMode && view.penIndex == quickPens[i] && view.ink == quickColors[i]
+            pv.picked = !view.eraserMode && view.penIndex == quickPens[i]
         }
     }
 
@@ -204,6 +225,4 @@ abstract class BaseInkActivity : Activity() {
     override fun onBackPressed() {
         closeWithPrompt()
     }
-
-    fun isDarkColor(c: Int): Boolean = Ui.isDark(c)
 }
