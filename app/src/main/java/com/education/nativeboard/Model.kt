@@ -28,7 +28,7 @@ object Pens {
         Pen("ريشة", 1.4f, 255, Paint.Cap.SQUARE),
         Pen("رصاص", 0.7f, 190, Paint.Cap.ROUND, grain = true),
         Pen("ماركر", 3f, 225, Paint.Cap.SQUARE),
-        Pen("تظليل", 3.2f, 80, Paint.Cap.SQUARE, highlight = true),
+        Pen("تظليل", 3.2f, 130, Paint.Cap.SQUARE, highlight = true),
         Pen("متقطع", 1f, 255, Paint.Cap.BUTT, dash = 3f),
         Pen("نيون", 1.2f, 255, Paint.Cap.ROUND, glow = 2.5f),
         Pen("فرشاة", 3f, 235, Paint.Cap.ROUND, brush = true),

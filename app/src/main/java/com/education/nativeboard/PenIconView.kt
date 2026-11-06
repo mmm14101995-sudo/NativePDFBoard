@@ -11,7 +11,7 @@ import android.graphics.Shader
 import android.view.View
 
 // قلم زجاجي: جسم بتدرج ولمعة وسن حسب النوع (حبر، فاين، ماركر، تظليل، رصاص)
-class PenIconView(ctx: Context, private val kind: String, private val body: Int) : View(ctx) {
+class PenIconView(ctx: Context, private val kind: String, var body: Int) : View(ctx) {
     var picked: Boolean = false
         set(v) {
             field = v

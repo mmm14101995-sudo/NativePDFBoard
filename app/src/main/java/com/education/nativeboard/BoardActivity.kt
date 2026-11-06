@@ -12,6 +12,8 @@ class BoardActivity : BaseInkActivity() {
 
     override fun pageTotal(): Int = doc.pageCount
 
+    override fun docTitle(): String = "سبورة"
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Ui.immersive(this)
@@ -33,9 +35,9 @@ class BoardActivity : BaseInkActivity() {
 
     // الأزرار الإضافية للسبورة: صفحة جديدة، لون الخلفية، المكتبة (كلها رموز)
     override fun extraButtons(row: LinearLayout) {
-        row.addView(Ui.iconWell(this, IconView(this, "plus", ICON)) { addPage() })
-        row.addView(Ui.iconWell(this, IconView(this, "palette", ICON)) { pickBackground() })
-        row.addView(Ui.iconWell(this, IconView(this, "library", ICON)) { pickFromLibrary() })
+        row.addView(actionBtn("plus", "صفحة") { addPage() })
+        row.addView(actionBtn("palette", "الخلفية") { pickBackground() })
+        row.addView(actionBtn("library", "مكتبة") { pickFromLibrary() })
     }
 
     // تحميل الصورة بدقة تناسب الشاشة (مش أصغر ومش أكبر من اللازم)

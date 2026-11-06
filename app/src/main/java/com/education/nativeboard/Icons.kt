@@ -44,6 +44,18 @@ object Icons {
             }
             "next" -> { path.moveTo(15f, 18f); path.lineTo(9f, 12f); path.lineTo(15f, 6f) }
             "prev" -> { path.moveTo(9f, 18f); path.lineTo(15f, 12f); path.lineTo(9f, 6f) }
+            "expand" -> {
+                path.moveTo(4f, 9f); path.lineTo(4f, 4f); path.lineTo(9f, 4f)
+                path.moveTo(15f, 4f); path.lineTo(20f, 4f); path.lineTo(20f, 9f)
+                path.moveTo(20f, 15f); path.lineTo(20f, 20f); path.lineTo(15f, 20f)
+                path.moveTo(9f, 20f); path.lineTo(4f, 20f); path.lineTo(4f, 15f)
+            }
+            "shrink" -> {
+                path.moveTo(9f, 4f); path.lineTo(9f, 9f); path.lineTo(4f, 9f)
+                path.moveTo(20f, 9f); path.lineTo(15f, 9f); path.lineTo(15f, 4f)
+                path.moveTo(15f, 20f); path.lineTo(15f, 15f); path.lineTo(20f, 15f)
+                path.moveTo(4f, 15f); path.lineTo(9f, 15f); path.lineTo(9f, 20f)
+            }
             "grip" -> {
                 val style = p.style
                 p.style = Paint.Style.FILL
