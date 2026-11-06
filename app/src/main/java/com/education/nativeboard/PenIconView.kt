@@ -90,6 +90,16 @@ class PenIconView(ctx: Context, private val kind: String, private val body: Int)
                 gloss(c, 7f, 4f, 33f, 34f, 9f, body)
                 poly(c, shade(body, 0.25f), 9f, 32f, 31f, 32f, 29f, 47f, 11f, 47f)
             }
+            "brush" -> {
+                gloss(c, 12f, 4f, 28f, 32f, 8f, body)
+                poly(c, shade(body, -0.3f), 12f, 32f, 28f, 32f, 24f, 50f, 16f, 50f)
+                poly(c, 0xFF1E293B.toInt(), 17f, 50f, 23f, 50f, 20f, 57f)
+            }
+            "smart" -> {
+                gloss(c, 13f, 4f, 27f, 30f, 4f, body)
+                poly(c, 0xFFE2E8F0.toInt(), 15f, 30f, 25f, 30f, 20f, 50f)
+                poly(c, 0xFF38BDF8.toInt(), 20f, 11f, 23f, 15f, 20f, 19f, 17f, 15f)
+            }
             "pencil" -> {
                 gloss(c, 14f, 4f, 26f, 36f, 3f, body)
                 poly(c, 0xFFFDE68A.toInt(), 14f, 36f, 26f, 36f, 20f, 56f)

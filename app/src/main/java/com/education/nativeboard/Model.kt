@@ -13,7 +13,9 @@ class Pen(
     val highlight: Boolean = false,
     val dash: Float = 0f,
     val glow: Float = 0f,
-    val grain: Boolean = false
+    val grain: Boolean = false,
+    val brush: Boolean = false,
+    val smart: Boolean = false
 )
 
 object Pens {
@@ -28,7 +30,9 @@ object Pens {
         Pen("ماركر", 3f, 225, Paint.Cap.SQUARE),
         Pen("تظليل", 3.2f, 80, Paint.Cap.SQUARE, highlight = true),
         Pen("متقطع", 1f, 255, Paint.Cap.BUTT, dash = 3f),
-        Pen("نيون", 1.2f, 255, Paint.Cap.ROUND, glow = 2.5f)
+        Pen("نيون", 1.2f, 255, Paint.Cap.ROUND, glow = 2.5f),
+        Pen("فرشاة", 3f, 235, Paint.Cap.ROUND, brush = true),
+        Pen("ذكي", 1f, 255, Paint.Cap.ROUND, smart = true)
     )
 }
 

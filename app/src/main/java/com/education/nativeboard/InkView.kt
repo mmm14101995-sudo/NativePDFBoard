@@ -132,6 +132,10 @@ class InkView(ctx: Context) : View(ctx) {
             if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
             i += 2
         }
+        if (pen.brush && st.pts.size > 3) {
+            drawBrush(c, st, w, pen)
+            return
+        }
         if (pen.highlight) paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.MULTIPLY)
         if (pen.grain) {
             // الرصاص: 3 خطوط رفيعة متجاورة بشفافية، فبيطلع شكل الجرافيت
@@ -192,7 +196,7 @@ class InkView(ctx: Context) : View(ctx) {
         current = null
         mode = 0
         if (st != null && st.pts.size >= 2) {
-            strokes.add(st)
+            strokes.add(if (Pens.ALL[st.pen].smart) snapShape(st) else st)
             onChanged?.invoke()
         }
         invalidate()
@@ -245,6 +249,106 @@ class InkView(ctx: Context) : View(ctx) {
             strokes = out
             onChanged?.invoke()
         }
+    }
+
+    // الفرشاة: الخط بيتخن ويرفع حسب السرعة، زي الضغط على الورق
+    private fun drawBrush(c: Canvas, st: Stroke, w: Float, pen: Pen) {
+        paint.reset()
+        paint.color = st.color
+        paint.alpha = pen.alpha
+        paint.style = Paint.Style.STROKE
+        paint.strokeCap = Paint.Cap.ROUND
+        var px = pageRect.left + st.pts[0] * pageRect.width()
+        var py = pageRect.top + st.pts[1] * pageRect.height()
+        var speed = 0f
+        var i = 2
+        while (i + 1 < st.pts.size) {
+            val x = pageRect.left + st.pts[i] * pageRect.width()
+            val y = pageRect.top + st.pts[i + 1] * pageRect.height()
+            val d = Math.hypot((x - px).toDouble(), (y - py).toDouble()).toFloat()
+            speed = speed * 0.7f + d * 0.3f
+            paint.strokeWidth = (w * (1.6f - speed / 18f)).coerceIn(w * 0.45f, w * 1.6f)
+            c.drawLine(px, py, x, y, paint)
+            px = x
+            py = y
+            i += 2
+        }
+    }
+
+    // القلم الذكي: لو الخط مستقيم بيتحول لخط نضيف، ولو مقفول بيتحول لدايرة أو بيضاوي أو مستطيل
+    private fun snapShape(st: Stroke): Stroke {
+        val n = st.pts.size / 2
+        if (n < 6 || pageRect.width() <= 0f || pageRect.height() <= 0f) return st
+        val wd = pageRect.width()
+        val ht = pageRect.height()
+        val xs = FloatArray(n) { st.pts[it * 2] * wd }
+        val ys = FloatArray(n) { st.pts[it * 2 + 1] * ht }
+        var minX = xs[0]
+        var maxX = xs[0]
+        var minY = ys[0]
+        var maxY = ys[0]
+        for (k in 1 until n) {
+            if (xs[k] < minX) minX = xs[k]
+            if (xs[k] > maxX) maxX = xs[k]
+            if (ys[k] < minY) minY = ys[k]
+            if (ys[k] > maxY) maxY = ys[k]
+        }
+        val bw = maxX - minX
+        val bh = maxY - minY
+        if (bw < 8f && bh < 8f) return st
+        val ax = xs[0]
+        val ay = ys[0]
+        val bx = xs[n - 1]
+        val by = ys[n - 1]
+        val len = Math.hypot((bx - ax).toDouble(), (by - ay).toDouble()).toFloat()
+        val diag = Math.hypot(bw.toDouble(), bh.toDouble()).toFloat()
+        val out = ArrayList<Float>()
+        fun emit(px: Float, py: Float) {
+            out.add(px / wd)
+            out.add(py / ht)
+        }
+        if (len > 0.8f * diag && len > 40f) {
+            var dev = 0f
+            for (k in 0 until n) {
+                val d = Math.abs((xs[k] - ax) * (by - ay) - (ys[k] - ay) * (bx - ax)) / len
+                if (d > dev) dev = d
+            }
+            if (dev > 0.05f * len) return st
+            emit(ax, ay)
+            emit(bx, by)
+            return Stroke(st.pen, st.color, st.size, out)
+        }
+        if (len > 0.3f * diag) return st
+        val cx = (minX + maxX) / 2f
+        val cy = (minY + maxY) / 2f
+        val rx = bw / 2f
+        val ry = bh / 2f
+        var err = 0.0
+        for (k in 0 until n) {
+            val ex = (xs[k] - cx) / rx
+            val ey = (ys[k] - cy) / ry
+            err += Math.abs(ex * ex + ey * ey - 1.0)
+        }
+        if (err / n < 0.25) {
+            for (k in 0..72) {
+                val t = k / 72.0 * Math.PI * 2
+                emit(cx + rx * Math.cos(t).toFloat(), cy + ry * Math.sin(t).toFloat())
+            }
+            return Stroke(st.pen, st.color, st.size, out)
+        }
+        val tol = 0.12f * minOf(bw, bh)
+        var edge = 0
+        for (k in 0 until n) {
+            val d = minOf(minOf(Math.abs(xs[k] - minX), Math.abs(xs[k] - maxX)), minOf(Math.abs(ys[k] - minY), Math.abs(ys[k] - maxY)))
+            if (d <= tol) edge++
+        }
+        if (edge < 0.85f * n) return st
+        emit(minX, minY)
+        emit(maxX, minY)
+        emit(maxX, maxY)
+        emit(minX, maxY)
+        emit(minX, minY)
+        return Stroke(st.pen, st.color, st.size, out)
     }
 
     private fun dist(a: PointF, b: PointF): Float = Math.hypot((a.x - b.x).toDouble(), (a.y - b.y).toDouble()).toFloat()

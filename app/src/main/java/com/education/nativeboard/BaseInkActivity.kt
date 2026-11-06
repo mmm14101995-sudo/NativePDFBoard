@@ -3,15 +3,19 @@ package com.education.nativeboard
 import android.app.Activity
 import android.app.AlertDialog
 import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 
-// الشاشة المشتركة بين القارئ والسبورة: سطح الرسم + شريط الرموز العايم + التراجع + الحفظ
+// الشاشة المشتركة بين القارئ والسبورة: سطح الرسم + شريط عايم (يتحرك، أفقي أو رأسي، زجاجي)
 abstract class BaseInkActivity : Activity() {
     protected lateinit var doc: Doc
     protected lateinit var view: InkView
@@ -22,25 +26,27 @@ abstract class BaseInkActivity : Activity() {
     private val undo = ArrayList<ArrayList<Stroke>>()
     private val redo = ArrayList<ArrayList<Stroke>>()
     private var sizeIdx = 1
-    private val quickPens = intArrayOf(0, 3, 7, 8, 6)
-    private val quickKinds = arrayOf("fountain", "fineliner", "marker", "highlighter", "pencil")
-    private val quickBodies = intArrayOf(0xFF334155.toInt(), 0xFF1E293B.toInt(), 0xFFDC2626.toInt(), 0xFFFACC15.toInt(), 0xFF64748B.toInt())
+    private var vertical = false
+    private val quickPens = intArrayOf(0, 3, 11, 8, 12)
+    private val quickKinds = arrayOf("fountain", "fineliner", "brush", "highlighter", "smart")
+    private val quickBodies = intArrayOf(0xFF334155.toInt(), 0xFF1E293B.toInt(), 0xFF0EA5E9.toInt(), 0xFFFACC15.toInt(), 0xFF8B5CF6.toInt())
     private val penViews = ArrayList<PenIconView>()
+    private val penSlots = ArrayList<FrameLayout>()
+    private lateinit var host: FrameLayout
     private lateinit var pageLabel: TextView
     private lateinit var undoBtn: View
     private lateinit var redoBtn: View
     private lateinit var eraseBtn: View
-    private lateinit var colorBtn: View
     private lateinit var colorDot: View
-    private lateinit var sizeBtn: View
     private lateinit var sizeDot: View
-    private lateinit var bar: View
     private lateinit var eye: View
     private lateinit var chev: ChevronView
 
     abstract fun pageTotal(): Int
     abstract fun showPageBitmap(n: Int)
     open fun extraButtons(row: LinearLayout) {}
+    protected open fun startPage(): Int = 1
+    protected open fun onPageShown(n: Int) {}
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
@@ -62,56 +68,10 @@ abstract class BaseInkActivity : Activity() {
         }
         val root = FrameLayout(this)
         root.addView(view, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-
-        val (scroll, row) = Ui.bar(this)
-        bar = scroll
-
-        // تراجع وإعادة
-        undoBtn = Ui.iconWell(this, IconView(this, "undo", ICON)) { doUndo() }
-        redoBtn = Ui.iconWell(this, IconView(this, "redo", ICON)) { doRedo() }
-        row.addView(undoBtn)
-        row.addView(redoBtn)
-        row.addView(Ui.sep(this))
-
-        // الأقلام الخمسة بأشكالها
-        penViews.clear()
-        for (i in quickPens.indices) {
-            val pv = PenIconView(this, quickKinds[i], quickBodies[i])
-            penViews.add(pv)
-            row.addView(penSlot(pv, i))
-        }
-        row.addView(Ui.sep(this))
-
-        // لون الحبر (دايرة باللون الحالي) وحجم القلم (دايرة بحجمه)
-        colorDot = View(this)
-        colorBtn = Ui.iconWell(this, colorDot) { openInkPalette() }
-        row.addView(colorBtn)
-        sizeDot = View(this)
-        sizeBtn = Ui.iconWell(this, sizeDot) { cycleSize() }
-        row.addView(sizeBtn)
-
-        // الممحاة
-        eraseBtn = Ui.penButton(this, "eraser") { toggleEraser() }
-        row.addView(eraseBtn)
-        row.addView(Ui.sep(this))
-
-        // التنقل بين الصفحات
-        row.addView(Ui.iconWell(this, IconView(this, "next", ICON)) { goPage(pageNo + 1) })
-        pageLabel = Ui.label(this)
-        row.addView(pageLabel)
-        row.addView(Ui.iconWell(this, IconView(this, "prev", ICON)) { goPage(pageNo - 1) })
-        row.addView(Ui.sep(this))
-
-        extraButtons(row)
-        row.addView(Ui.iconWell(this, IconView(this, "close", ICON)) { closeWithPrompt() })
+        host = FrameLayout(this)
+        root.addView(host, placement())
 
         val dp12 = Ui.dp(this, 12)
-        val dp8 = Ui.dp(this, 8)
-        root.addView(scroll, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM).apply {
-            setMargins(dp8, 0, dp8, dp12)
-        })
-
-        // زرار الإخفاء والإظهار: دايرة زجاجية بسهم
         val (eyeView, chevView) = Glass.glassButton(this, 46) { toggleBar() }
         eye = eyeView
         chev = chevView
@@ -120,16 +80,151 @@ abstract class BaseInkActivity : Activity() {
         })
 
         setContentView(root)
+        installBar()
+    }
+
+    // مكان الشريط: أسفل الشاشة (أفقي) أو على الجنب (رأسي)
+    private fun placement(): FrameLayout.LayoutParams {
+        val m = Ui.dp(this, 12)
+        return if (vertical) {
+            FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.START or Gravity.CENTER_VERTICAL).apply {
+                setMargins(m, Ui.dp(this@BaseInkActivity, 70), 0, Ui.dp(this@BaseInkActivity, 70))
+            }
+        } else {
+            FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM).apply {
+                setMargins(m, 0, m, m)
+            }
+        }
+    }
+
+    private fun installBar() {
+        host.removeAllViews()
+        host.addView(buildBar(vertical), FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        host.layoutParams = placement()
+        host.translationX = 0f
+        host.translationY = 0f
         refreshBar()
     }
 
+    private fun buildBar(v: Boolean): View {
+        val row = LinearLayout(this).apply {
+            orientation = if (v) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(Ui.dp(this@BaseInkActivity, 8), Ui.dp(this@BaseInkActivity, 8), Ui.dp(this@BaseInkActivity, 8), Ui.dp(this@BaseInkActivity, 8))
+            background = glassBg()
+        }
+        val wrap: View = if (v) {
+            ScrollView(this).apply { isFillViewport = true; isVerticalScrollBarEnabled = false; addView(row) }
+        } else {
+            HorizontalScrollView(this).apply { isFillViewport = true; isHorizontalScrollBarEnabled = false; addView(row) }
+        }
+
+        // مقبض السحب: بيحرّك الشريط لأي مكان
+        val handle = Ui.iconWell(this, IconView(this, "grip", ICON)) {}
+        handle.setOnTouchListener(dragListener())
+        row.addView(handle)
+        row.addView(sep(v))
+
+        undoBtn = Ui.iconWell(this, IconView(this, "undo", ICON)) { doUndo() }
+        redoBtn = Ui.iconWell(this, IconView(this, "redo", ICON)) { doRedo() }
+        row.addView(undoBtn)
+        row.addView(redoBtn)
+        row.addView(sep(v))
+
+        penSlots.clear()
+        penViews.clear()
+        for (i in quickPens.indices) {
+            val pv = PenIconView(this, quickKinds[i], quickBodies[i])
+            penViews.add(pv)
+            val slot = penSlot(pv, i)
+            penSlots.add(slot)
+            row.addView(slot)
+        }
+        row.addView(sep(v))
+
+        colorDot = View(this)
+        row.addView(Ui.iconWell(this, colorDot) { openInkPalette() })
+        sizeDot = View(this)
+        row.addView(Ui.iconWell(this, sizeDot) { cycleSize() })
+        eraseBtn = Ui.penButton(this, "eraser") { toggleEraser() }
+        row.addView(eraseBtn)
+        row.addView(sep(v))
+
+        row.addView(Ui.iconWell(this, IconView(this, "next", ICON)) { goPage(pageNo + 1) })
+        pageLabel = Ui.label(this)
+        row.addView(pageLabel)
+        row.addView(Ui.iconWell(this, IconView(this, "prev", ICON)) { goPage(pageNo - 1) })
+        row.addView(sep(v))
+
+        extraButtons(row)
+        row.addView(Ui.iconWell(this, IconView(this, "orient", ICON)) { toggleOrient() })
+        row.addView(Ui.iconWell(this, IconView(this, "close", ICON)) { closeWithPrompt() })
+        return wrap
+    }
+
     private fun penSlot(pv: PenIconView, i: Int): FrameLayout = FrameLayout(this).apply {
-        background = Ui.pill(this@BaseInkActivity, 0x14FFFFFF, 14)
+        background = normBg()
         addView(pv, FrameLayout.LayoutParams(Ui.dp(this@BaseInkActivity, 28), Ui.dp(this@BaseInkActivity, 50), Gravity.CENTER))
         layoutParams = LinearLayout.LayoutParams(Ui.dp(this@BaseInkActivity, 42), Ui.dp(this@BaseInkActivity, 56)).apply {
-            setMargins(Ui.dp(this@BaseInkActivity, 3), 0, Ui.dp(this@BaseInkActivity, 3), 0)
+            setMargins(Ui.dp(this@BaseInkActivity, 3), Ui.dp(this@BaseInkActivity, 3), Ui.dp(this@BaseInkActivity, 3), Ui.dp(this@BaseInkActivity, 3))
         }
         setOnClickListener { selectPen(i) }
+    }
+
+    private fun sep(v: Boolean): View = View(this).apply {
+        setBackgroundColor(0x33FFFFFF)
+        layoutParams = if (v) {
+            LinearLayout.LayoutParams(Ui.dp(this@BaseInkActivity, 26), Ui.dp(this@BaseInkActivity, 1)).apply {
+                setMargins(0, Ui.dp(this@BaseInkActivity, 6), 0, Ui.dp(this@BaseInkActivity, 6))
+            }
+        } else {
+            LinearLayout.LayoutParams(Ui.dp(this@BaseInkActivity, 1), Ui.dp(this@BaseInkActivity, 26)).apply {
+                setMargins(Ui.dp(this@BaseInkActivity, 6), 0, Ui.dp(this@BaseInkActivity, 6), 0)
+            }
+        }
+    }
+
+    private fun glassBg(): GradientDrawable = GradientDrawable(
+        GradientDrawable.Orientation.TOP_BOTTOM,
+        intArrayOf(0x66334A6B, 0xCC0C1222.toInt())
+    ).apply {
+        cornerRadius = Ui.dp(this@BaseInkActivity, 30).toFloat()
+        setStroke(Ui.dp(this@BaseInkActivity, 1), 0x55FFFFFF)
+    }
+
+    private fun normBg(): GradientDrawable = GradientDrawable().apply {
+        cornerRadius = Ui.dp(this@BaseInkActivity, 14).toFloat()
+        setColor(0x14FFFFFF)
+    }
+
+    private fun selBg(): GradientDrawable = GradientDrawable().apply {
+        cornerRadius = Ui.dp(this@BaseInkActivity, 14).toFloat()
+        setColor(0x33FFFFFF)
+        setStroke(Ui.dp(this@BaseInkActivity, 2), 0xFF38BDF8.toInt())
+    }
+
+    // سحب الشريط من مقبضه
+    private fun dragListener(): View.OnTouchListener {
+        var dx = 0f
+        var dy = 0f
+        return View.OnTouchListener { _, e ->
+            when (e.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    dx = e.rawX - host.translationX
+                    dy = e.rawY - host.translationY
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    host.translationX = e.rawX - dx
+                    host.translationY = e.rawY - dy
+                }
+            }
+            true
+        }
+    }
+
+    private fun toggleOrient() {
+        vertical = !vertical
+        installBar()
     }
 
     protected fun markDirty() {
@@ -144,6 +239,7 @@ abstract class BaseInkActivity : Activity() {
         redo.clear()
         view.strokes = doc.strokesOf(n)
         showPageBitmap(n)
+        onPageShown(n)
         view.invalidate()
         refreshBar()
     }
@@ -186,8 +282,8 @@ abstract class BaseInkActivity : Activity() {
     }
 
     private fun toggleBar() {
-        val hidden = bar.visibility == View.GONE
-        bar.visibility = if (hidden) View.VISIBLE else View.GONE
+        val hidden = host.visibility == View.GONE
+        host.visibility = if (hidden) View.VISIBLE else View.GONE
         chev.down = hidden
     }
 
@@ -201,6 +297,10 @@ abstract class BaseInkActivity : Activity() {
         val d = arrayOf(6, 10, 16)[sizeIdx]
         sizeDot.layoutParams = FrameLayout.LayoutParams(Ui.dp(this, d), Ui.dp(this, d), Gravity.CENTER)
         sizeDot.background = Glass.oval(this, ICON)
+        penSlots.forEachIndexed { i, s ->
+            val selected = !view.eraserMode && view.penIndex == quickPens[i]
+            s.background = if (selected) selBg() else normBg()
+        }
         penViews.forEachIndexed { i, pv ->
             pv.picked = !view.eraserMode && view.penIndex == quickPens[i]
         }

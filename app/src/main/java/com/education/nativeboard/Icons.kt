@@ -44,6 +44,16 @@ object Icons {
             }
             "next" -> { path.moveTo(15f, 18f); path.lineTo(9f, 12f); path.lineTo(15f, 6f) }
             "prev" -> { path.moveTo(9f, 18f); path.lineTo(15f, 12f); path.lineTo(9f, 6f) }
+            "grip" -> {
+                val style = p.style
+                p.style = Paint.Style.FILL
+                for (y in listOf(7f, 12f, 17f)) for (x in listOf(9f, 15f)) c.drawCircle(x, y, 1.4f, p)
+                p.style = style
+            }
+            "orient" -> {
+                c.drawRoundRect(RectF(4f, 7f, 20f, 17f), 2f, 2f, p)
+                path.moveTo(12f, 7f); path.lineTo(12f, 17f)
+            }
             "plus" -> { path.moveTo(12f, 5f); path.lineTo(12f, 19f); path.moveTo(5f, 12f); path.lineTo(19f, 12f) }
             "close" -> { path.moveTo(6f, 6f); path.lineTo(18f, 18f); path.moveTo(18f, 6f); path.lineTo(6f, 18f) }
             "trash" -> {
