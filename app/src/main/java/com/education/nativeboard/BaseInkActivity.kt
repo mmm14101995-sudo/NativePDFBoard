@@ -15,9 +15,10 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 
-// الشاشة المشتركة بين القارئ والسبورة
-// الوضع العادي: شريط مختصر تحت وكل أيقونة معاها كلام صغير
-// وضع ملء الشاشة: شريط عايم بأيقونات بس، بيتحرك وبيتبدل أفقي/رأسي
+// الشاشة المشتركة بين القارئ والسبورة:
+// - شريط علوي ثابت: العنوان، تراجع، إعادة، ملء الشاشة، إخفاء، إغلاق
+// - شريط جانبي ثابت: الأقلام، لون الحبر، حجم القلم، الممحاة
+// - شريط سفلي: التنقل بين الصفحات والإضافات (في ملء الشاشة بيبقى عايم ويتحرك)
 abstract class BaseInkActivity : Activity() {
     protected lateinit var doc: Doc
     protected lateinit var view: InkView
@@ -34,7 +35,6 @@ abstract class BaseInkActivity : Activity() {
     private val quickPens = intArrayOf(0, 3, 11, 8, 12)
     private val quickKinds = arrayOf("fountain", "fineliner", "brush", "highlighter", "smart")
     private val penLabels = arrayOf("قلم", "فاين", "فرشاة", "تظليل", "ذكي")
-    // كل قلم ليه لونه الخاص (الهايلايتر بيبدأ أصفر)
     private val slotInk = intArrayOf(0xFF111827.toInt(), 0xFF2563EB.toInt(), 0xFF0EA5E9.toInt(), 0xFFFACC15.toInt(), 0xFFA855F7.toInt())
     private val penViews = ArrayList<PenIconView>()
     private val penSlots = ArrayList<FrameLayout>()
@@ -42,16 +42,15 @@ abstract class BaseInkActivity : Activity() {
     private lateinit var pageLabel: TextView
     private lateinit var undoBtn: View
     private lateinit var redoBtn: View
+    private lateinit var fullBtn: FrameLayout
     private lateinit var eraseBtn: View
     private lateinit var colorDot: View
-    private var sizeDot: View? = null
-    private lateinit var eye: View
+    private lateinit var sizeDot: View
     private lateinit var chev: ChevronView
 
     abstract fun pageTotal(): Int
     abstract fun showPageBitmap(n: Int)
     open fun extraButtons(row: LinearLayout) {}
-    // اسم المستند (بيتعرض في الشاشات اللي بتورث)
     open fun docTitle(): String = ""
     protected open fun startPage(): Int = 1
     protected open fun onPageShown(n: Int) {}
@@ -80,28 +79,89 @@ abstract class BaseInkActivity : Activity() {
             }
         }
         val root = FrameLayout(this)
-        root.addView(view, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        content.addView(buildTop(), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        val mid = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        mid.addView(buildSide(), LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        mid.addView(view, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f))
+        content.addView(mid, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        root.addView(content, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         host = FrameLayout(this)
-        root.addView(host, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-
-        val dp12 = Ui.dp(this, 12)
-        val (eyeView, chevView) = Glass.glassButton(this, 46) { toggleBar() }
-        eye = eyeView
-        chev = chevView
-        root.addView(eye, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.END).apply {
-            setMargins(0, dp12, dp12, 0)
-        })
+        root.addView(host, placement())
         setContentView(root)
         applySystemUi()
         installBar()
     }
 
-    // مكان الشريط حسب الوضع
+    // الشريط العلوي الثابت
+    private fun buildTop(): View {
+        val bar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(Ui.dp(this@BaseInkActivity, 10), Ui.dp(this@BaseInkActivity, 6), Ui.dp(this@BaseInkActivity, 10), Ui.dp(this@BaseInkActivity, 6))
+            setBackgroundColor(0xF2101828.toInt())
+        }
+        bar.addView(TextView(this).apply {
+            text = docTitle()
+            setTextColor(ICON)
+            textSize = 15f
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            setPadding(Ui.dp(this@BaseInkActivity, 6), 0, Ui.dp(this@BaseInkActivity, 6), 0)
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        undoBtn = Ui.iconWell(this, IconView(this, "undo", ICON)) { doUndo() }
+        redoBtn = Ui.iconWell(this, IconView(this, "redo", ICON)) { doRedo() }
+        bar.addView(undoBtn)
+        bar.addView(redoBtn)
+        bar.addView(Ui.sep(this))
+        fullBtn = Ui.iconWell(this, IconView(this, "expand", ICON)) { toggleFull() }
+        bar.addView(fullBtn)
+        chev = ChevronView(this)
+        bar.addView(Ui.iconWell(this, chev) { toggleBar() })
+        bar.addView(Ui.iconWell(this, IconView(this, "close", ICON)) { closeWithPrompt() })
+        return bar
+    }
+
+    // الشريط الجانبي الثابت: الأقلام + الحبر + الحجم + الممحاة
+    private fun buildSide(): View {
+        val col = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(Ui.dp(this@BaseInkActivity, 6), Ui.dp(this@BaseInkActivity, 8), Ui.dp(this@BaseInkActivity, 6), Ui.dp(this@BaseInkActivity, 8))
+            setBackgroundColor(0xF2101828.toInt())
+        }
+        penSlots.clear()
+        penViews.clear()
+        for (i in quickPens.indices) {
+            val pv = PenIconView(this, quickKinds[i], slotInk[i])
+            penViews.add(pv)
+            val slot = penSlot(pv, i)
+            penSlots.add(slot)
+            col.addView(slot)
+        }
+        col.addView(hSep())
+        colorDot = View(this)
+        col.addView(Ui.iconWell(this, colorDot) { openInkPalette() })
+        sizeDot = View(this)
+        col.addView(Ui.iconWell(this, sizeDot) { cycleSize() })
+        eraseBtn = Ui.penButton(this, "eraser") { toggleEraser() }
+        col.addView(eraseBtn)
+        return col
+    }
+
+    private fun hSep(): View = View(this).apply {
+        setBackgroundColor(0x33FFFFFF)
+        layoutParams = LinearLayout.LayoutParams(Ui.dp(this@BaseInkActivity, 26), Ui.dp(this@BaseInkActivity, 1)).apply {
+            setMargins(0, Ui.dp(this@BaseInkActivity, 6), 0, Ui.dp(this@BaseInkActivity, 6))
+        }
+    }
+
+    // مكان الشريط السفلي حسب الوضع
     private fun placement(): FrameLayout.LayoutParams {
         val m = Ui.dp(this, 12)
         return when {
             fullMode && vertical -> FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.START or Gravity.CENTER_VERTICAL).apply {
-                setMargins(m, Ui.dp(this@BaseInkActivity, 70), 0, Ui.dp(this@BaseInkActivity, 70))
+                setMargins(m + Ui.dp(this@BaseInkActivity, 70), Ui.dp(this@BaseInkActivity, 70), 0, Ui.dp(this@BaseInkActivity, 70))
             }
             fullMode -> FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM).apply {
                 setMargins(m, 0, m, m)
@@ -115,13 +175,19 @@ abstract class BaseInkActivity : Activity() {
     private fun installBar() {
         labelMode = !fullMode
         host.removeAllViews()
-        host.addView(buildBar(), FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        host.addView(buildBar(), FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         host.layoutParams = placement()
         host.translationX = 0f
         host.translationY = 0f
         host.visibility = View.VISIBLE
-        eye.visibility = if (fullMode) View.VISIBLE else View.GONE
+        refreshFullIcon()
         refreshBar()
+    }
+
+    private fun refreshFullIcon() {
+        if (!::fullBtn.isInitialized) return
+        fullBtn.removeAllViews()
+        fullBtn.addView(IconView(this, if (fullMode) "shrink" else "expand", ICON), FrameLayout.LayoutParams(Ui.dp(this, 24), Ui.dp(this, 24), Gravity.CENTER))
     }
 
     // كلام صغير تحت الأيقونة (في الوضع العادي بس)
@@ -144,6 +210,7 @@ abstract class BaseInkActivity : Activity() {
     protected fun actionBtn(icon: String, label: String, onClick: () -> Unit): View =
         labeled(Ui.iconWell(this, IconView(this, icon, ICON), onClick), label)
 
+    // الشريط السفلي: التنقل بين الصفحات والإضافات
     private fun buildBar(): View {
         val v = fullMode && vertical
         val row = LinearLayout(this).apply {
@@ -165,36 +232,6 @@ abstract class BaseInkActivity : Activity() {
             row.addView(sep(v))
         }
 
-        undoBtn = Ui.iconWell(this, IconView(this, "undo", ICON)) { doUndo() }
-        redoBtn = Ui.iconWell(this, IconView(this, "redo", ICON)) { doRedo() }
-        row.addView(labeled(undoBtn, "تراجع"))
-        row.addView(labeled(redoBtn, "إعادة"))
-        row.addView(sep(v))
-
-        penSlots.clear()
-        penViews.clear()
-        for (i in quickPens.indices) {
-            val pv = PenIconView(this, quickKinds[i], slotInk[i])
-            penViews.add(pv)
-            val slot = penSlot(pv, i)
-            penSlots.add(slot)
-            row.addView(labeled(slot, penLabels[i]))
-        }
-        row.addView(sep(v))
-
-        colorDot = View(this)
-        row.addView(labeled(Ui.iconWell(this, colorDot) { openInkPalette() }, "لون"))
-        if (fullMode) {
-            val sd = View(this)
-            sizeDot = sd
-            row.addView(Ui.iconWell(this, sd) { cycleSize() })
-        } else {
-            sizeDot = null
-        }
-        eraseBtn = Ui.penButton(this, "eraser") { toggleEraser() }
-        row.addView(labeled(eraseBtn, "ممحاة"))
-        row.addView(sep(v))
-
         row.addView(labeled(Ui.iconWell(this, IconView(this, "next", ICON)) { goPage(pageNo + 1) }, "التالي"))
         pageLabel = Ui.label(this)
         row.addView(pageLabel)
@@ -203,16 +240,14 @@ abstract class BaseInkActivity : Activity() {
 
         extraButtons(row)
         if (fullMode) row.addView(Ui.iconWell(this, IconView(this, "orient", ICON)) { toggleOrient() })
-        row.addView(labeled(Ui.iconWell(this, IconView(this, if (fullMode) "shrink" else "expand", ICON)) { toggleFull() }, if (fullMode) "" else "ملء"))
-        row.addView(labeled(Ui.iconWell(this, IconView(this, "close", ICON)) { closeWithPrompt() }, "إغلاق"))
         return wrap
     }
 
     private fun penSlot(pv: PenIconView, i: Int): FrameLayout = FrameLayout(this).apply {
         background = normBg()
-        addView(pv, FrameLayout.LayoutParams(Ui.dp(this@BaseInkActivity, 28), Ui.dp(this@BaseInkActivity, 50), Gravity.CENTER))
-        layoutParams = LinearLayout.LayoutParams(Ui.dp(this@BaseInkActivity, 42), Ui.dp(this@BaseInkActivity, 56)).apply {
-            setMargins(Ui.dp(this@BaseInkActivity, 3), Ui.dp(this@BaseInkActivity, 3), Ui.dp(this@BaseInkActivity, 3), Ui.dp(this@BaseInkActivity, 3))
+        addView(pv, FrameLayout.LayoutParams(Ui.dp(this@BaseInkActivity, 28), Ui.dp(this@BaseInkActivity, 46), Gravity.CENTER))
+        layoutParams = LinearLayout.LayoutParams(Ui.dp(this@BaseInkActivity, 44), Ui.dp(this@BaseInkActivity, 54)).apply {
+            setMargins(Ui.dp(this@BaseInkActivity, 2), Ui.dp(this@BaseInkActivity, 3), Ui.dp(this@BaseInkActivity, 2), Ui.dp(this@BaseInkActivity, 3))
         }
         setOnClickListener { selectPen(i) }
     }
@@ -239,17 +274,17 @@ abstract class BaseInkActivity : Activity() {
     }
 
     private fun normBg(): GradientDrawable = GradientDrawable().apply {
-        cornerRadius = Ui.dp(this@BaseInkActivity, 14).toFloat()
+        cornerRadius = Ui.dp(this@BaseInkActivity, 12).toFloat()
         setColor(0x14FFFFFF)
     }
 
     private fun selBg(): GradientDrawable = GradientDrawable().apply {
-        cornerRadius = Ui.dp(this@BaseInkActivity, 14).toFloat()
+        cornerRadius = Ui.dp(this@BaseInkActivity, 12).toFloat()
         setColor(0x33FFFFFF)
         setStroke(Ui.dp(this@BaseInkActivity, 2), 0xFF38BDF8.toInt())
     }
 
-    // سحب الشريط من مقبضه (في ملء الشاشة بس)
+    // سحب الشريط السفلي من مقبضه (في ملء الشاشة بس)
     private fun dragListener(): View.OnTouchListener {
         var dx = 0f
         var dy = 0f
@@ -278,6 +313,12 @@ abstract class BaseInkActivity : Activity() {
     private fun toggleOrient() {
         vertical = !vertical
         installBar()
+    }
+
+    private fun toggleBar() {
+        val hidden = host.visibility == View.GONE
+        host.visibility = if (hidden) View.VISIBLE else View.GONE
+        chev.down = hidden
     }
 
     protected fun markDirty() {
@@ -342,12 +383,6 @@ abstract class BaseInkActivity : Activity() {
         view.restore(redo.removeAt(redo.size - 1))
     }
 
-    private fun toggleBar() {
-        val hidden = host.visibility == View.GONE
-        host.visibility = if (hidden) View.VISIBLE else View.GONE
-        chev.down = hidden
-    }
-
     protected fun refreshBar() {
         if (!::view.isInitialized || !::pageLabel.isInitialized) return
         pageLabel.text = "${pageNo}/${pageTotal()}"
@@ -355,11 +390,9 @@ abstract class BaseInkActivity : Activity() {
         redoBtn.alpha = if (redo.isEmpty()) 0.35f else 1f
         eraseBtn.alpha = if (view.eraserMode) 1f else 0.6f
         colorDot.background = Glass.oval(this, view.ink, 0xFFFFFFFF.toInt(), 2)
-        sizeDot?.let { sd ->
-            val d = arrayOf(6, 10, 16)[sizeIdx]
-            sd.layoutParams = FrameLayout.LayoutParams(Ui.dp(this, d), Ui.dp(this, d), Gravity.CENTER)
-            sd.background = Glass.oval(this, ICON)
-        }
+        val d = arrayOf(6, 10, 16)[sizeIdx]
+        sizeDot.layoutParams = FrameLayout.LayoutParams(Ui.dp(this, d), Ui.dp(this, d), Gravity.CENTER)
+        sizeDot.background = Glass.oval(this, ICON)
         penSlots.forEachIndexed { i, s ->
             val selected = !view.eraserMode && view.penIndex == quickPens[i]
             s.background = if (selected) selBg() else normBg()
