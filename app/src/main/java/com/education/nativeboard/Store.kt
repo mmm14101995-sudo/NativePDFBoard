@@ -10,6 +10,8 @@ class Doc(val id: String, val isBoard: Boolean) {
     var bg: Int = -1
     var pageCount: Int = 1
     val pages = HashMap<Int, ArrayList<Stroke>>()
+    // صورة من المكتبة العلمية لكل صفحة (اسم الملف جوه assets/library)
+    val images = HashMap<Int, String>()
 
     fun strokesOf(n: Int): ArrayList<Stroke> = pages.getOrPut(n) { ArrayList() }
 }
@@ -35,6 +37,14 @@ object Store {
             val o = JSONObject(f.readText())
             doc.bg = o.optInt("bg", -1)
             doc.pageCount = o.optInt("count", 1)
+            val imgs = o.optJSONObject("imgs")
+            if (imgs != null) {
+                val ik = imgs.keys()
+                while (ik.hasNext()) {
+                    val k = ik.next()
+                    doc.images[k.toInt()] = imgs.getString(k)
+                }
+            }
             val pages = o.optJSONObject("pages")
             if (pages != null) {
                 val keys = pages.keys()
@@ -55,7 +65,9 @@ object Store {
         doc.pages.forEach { (n, list) ->
             if (list.isNotEmpty()) pages.put(n.toString(), JSONArray(list.map { it.toJson() }))
         }
-        val o = JSONObject().put("bg", doc.bg).put("count", doc.pageCount).put("pages", pages)
+        val imgs = JSONObject()
+        doc.images.forEach { (n, f) -> imgs.put(n.toString(), f) }
+        val o = JSONObject().put("bg", doc.bg).put("count", doc.pageCount).put("pages", pages).put("imgs", imgs)
         jsonFile(ctx, doc.id).writeText(o.toString())
     }
 

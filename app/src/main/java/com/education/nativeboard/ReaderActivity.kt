@@ -1,6 +1,7 @@
 package com.education.nativeboard
 
 import android.graphics.Bitmap
+import android.graphics.Matrix
 import android.graphics.Color
 import android.graphics.pdf.PdfRenderer
 import android.os.Bundle
@@ -30,11 +31,19 @@ class ReaderActivity : BaseInkActivity() {
     override fun showPageBitmap(n: Int) {
         val r = renderer ?: return
         val page = r.openPage(n - 1)
-        val w = (view.width.coerceAtLeast(800) * 1.4f).toInt().coerceAtMost(1700)
-        val h = (w * page.height.toFloat() / page.width).toInt()
+        // الصورة بنفس نسبة الشاشة بالظبط، والـ PDF متوسّط جواها من غير ما يتقص
+        val w = (view.width.coerceAtLeast(800) * 1.5f).toInt().coerceAtMost(2400)
+        val h = (view.height.coerceAtLeast(1000) * 1.5f).toInt().coerceAtMost(3600)
         val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
         bmp.eraseColor(Color.WHITE)
-        page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+        val sc = minOf(w.toFloat() / page.width, h.toFloat() / page.height)
+        val dx = (w - page.width * sc) / 2f
+        val dy = (h - page.height * sc) / 2f
+        val m = Matrix().apply {
+            setScale(sc, sc)
+            postTranslate(dx, dy)
+        }
+        page.render(bmp, null, m, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
         page.close()
         view.pageBitmap = bmp
         view.bgColor = Color.WHITE
