@@ -51,6 +51,8 @@ abstract class BaseInkActivity : Activity() {
     abstract fun pageTotal(): Int
     abstract fun showPageBitmap(n: Int)
     open fun extraButtons(row: LinearLayout) {}
+    // اسم المستند (بيتعرض في الشاشات اللي بتورث)
+    open fun docTitle(): String = ""
     protected open fun startPage(): Int = 1
     protected open fun onPageShown(n: Int) {}
 
