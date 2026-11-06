@@ -176,7 +176,7 @@ abstract class BaseInkActivity : Activity() {
         colorBtn.setTextColor(Ui.INKS[colorIdx])
         sizeBtn.text = "حجم " + Ui.SIZES[sizeIdx].toInt()
         penViews.forEachIndexed { i, pv ->
-            pv.selected = !view.eraserMode && view.penIndex == quickPens[i] && view.ink == quickColors[i]
+            pv.picked = !view.eraserMode && view.penIndex == quickPens[i] && view.ink == quickColors[i]
         }
     }
 

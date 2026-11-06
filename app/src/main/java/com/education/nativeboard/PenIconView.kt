@@ -9,7 +9,7 @@ import android.view.View
 
 // قلم مرسوم بشكل حقيقي: جسم ملون وسن حسب نوعه (حبر، فاين، ماركر، تظليل، رصاص)
 class PenIconView(ctx: Context, private val kind: String, private val body: Int) : View(ctx) {
-    var selected: Boolean = false
+    var picked: Boolean = false
         set(v) {
             field = v
             invalidate()
@@ -39,7 +39,7 @@ class PenIconView(ctx: Context, private val kind: String, private val body: Int)
         val ringBot = ringTop + h * 0.05f
         val bodyBot = h * 0.94f
 
-        if (selected) {
+        if (picked) {
             p.reset()
             p.color = 0x3338BDF8
             c.drawRoundRect(RectF(0f, 0f, w, h), w * 0.3f, w * 0.3f, p)
