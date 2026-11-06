@@ -154,4 +154,27 @@ object Ui {
             setOnClickListener { onClick() }
         }
     }
+
+    // لوحة ألوان الحبر (16 لون)
+    val INK_PALETTE = intArrayOf(
+        Color.parseColor("#111827"), Color.parseColor("#475569"), Color.parseColor("#94a3b8"), Color.WHITE,
+        Color.parseColor("#2563eb"), Color.parseColor("#0ea5e9"), Color.parseColor("#14b8a6"), Color.parseColor("#16a34a"),
+        Color.parseColor("#84cc16"), Color.parseColor("#facc15"), Color.parseColor("#f97316"), Color.parseColor("#dc2626"),
+        Color.parseColor("#ec4899"), Color.parseColor("#a855f7"), Color.parseColor("#6366f1"), Color.parseColor("#78350f")
+    )
+
+    // لوحة ألوان الخلفية (فاتحة وغامقة)
+    val BG_PALETTE = intArrayOf(
+        Color.WHITE, Color.parseColor("#fdf6e3"), Color.parseColor("#f1f5f9"), Color.parseColor("#e0f2fe"),
+        Color.parseColor("#dcfce7"), Color.parseColor("#fef9c3"), Color.parseColor("#fce7f3"), Color.parseColor("#111111"),
+        Color.parseColor("#0f172a"), Color.parseColor("#1f3d2b"), Color.parseColor("#3b2f2f"), Color.parseColor("#1e1b4b")
+    )
+
+    // زرار دايري بخلفية زجاجية وفيه محتوى في النص
+    fun iconWell(c: Context, inner: View, onClick: () -> Unit): FrameLayout = FrameLayout(c).apply {
+        background = pill(c, 0x33FFFFFF, 22)
+        addView(inner, FrameLayout.LayoutParams(dp(c, 24), dp(c, 24), Gravity.CENTER))
+        layoutParams = LinearLayout.LayoutParams(dp(c, 44), dp(c, 44)).apply { setMargins(dp(c, 3), 0, dp(c, 3), 0) }
+        setOnClickListener { onClick() }
+    }
 }

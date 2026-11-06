@@ -21,7 +21,6 @@ abstract class BaseInkActivity : Activity() {
     private val undo = ArrayList<ArrayList<Stroke>>()
     private val redo = ArrayList<ArrayList<Stroke>>()
     private var sizeIdx = 1
-    private var colorIdx = 0
     private val quickPens = intArrayOf(0, 3, 7, 8, 6)
     private val quickKinds = arrayOf("fountain", "fineliner", "marker", "highlighter", "pencil")
     private val quickColors = intArrayOf(0xFFF97316.toInt(), 0xFF111827.toInt(), 0xFF8B5CF6.toInt(), 0xFF06B6D4.toInt(), 0xFFFACC15.toInt())
@@ -30,10 +29,12 @@ abstract class BaseInkActivity : Activity() {
     private lateinit var undoBtn: TextView
     private lateinit var redoBtn: TextView
     private lateinit var eraseBtn: View
-    private lateinit var colorBtn: TextView
+    private lateinit var colorBtn: View
+    private lateinit var colorDot: View
     private lateinit var sizeBtn: TextView
     private lateinit var bar: View
-    private lateinit var eye: TextView
+    private lateinit var eye: View
+    private lateinit var chev: ChevronView
 
     abstract fun pageTotal(): Int
     abstract fun showPageBitmap(n: Int)
@@ -77,7 +78,8 @@ abstract class BaseInkActivity : Activity() {
             row.addView(pv)
         }
         row.addView(Ui.sep(this))
-        colorBtn = Ui.btn(this, "●") { cycleColor() }
+        colorDot = View(this)
+        colorBtn = Ui.iconWell(this, colorDot) { openInkPalette() }
         sizeBtn = Ui.btn(this, "حجم") { cycleSize() }
         eraseBtn = Ui.penButton(this, "eraser") { toggleEraser() }
         row.addView(colorBtn)
@@ -99,7 +101,9 @@ abstract class BaseInkActivity : Activity() {
         })
 
         // زرار الإخفاء والإظهار للشريط
-        eye = Ui.btn(this, "👁") { toggleBar() }
+        val (eyeView, chevView) = Glass.glassButton(this, 46) { toggleBar() }
+        eye = eyeView
+        chev = chevView
         root.addView(eye, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.END).apply {
             setMargins(0, dp12, dp12, 0)
         })
@@ -131,11 +135,12 @@ abstract class BaseInkActivity : Activity() {
         refreshBar()
     }
 
-    private fun cycleColor() {
-        colorIdx = (colorIdx + 1) % Ui.INKS.size
-        view.ink = Ui.INKS[colorIdx]
-        view.eraserMode = false
-        refreshBar()
+    private fun openInkPalette() {
+        Glass.swatchDialog(this, "لون الحبر", Ui.INK_PALETTE, view.ink) { c ->
+            view.ink = c
+            view.eraserMode = false
+            refreshBar()
+        }
     }
 
     private fun cycleSize() {
@@ -164,7 +169,7 @@ abstract class BaseInkActivity : Activity() {
     private fun toggleBar() {
         val hidden = bar.visibility == View.GONE
         bar.visibility = if (hidden) View.VISIBLE else View.GONE
-        eye.text = if (hidden) "👁" else "🙈"
+        chev.down = hidden
     }
 
     protected fun refreshBar() {
@@ -173,7 +178,7 @@ abstract class BaseInkActivity : Activity() {
         undoBtn.alpha = if (undo.isEmpty()) 0.35f else 1f
         redoBtn.alpha = if (redo.isEmpty()) 0.35f else 1f
         eraseBtn.alpha = if (view.eraserMode) 1f else 0.6f
-        colorBtn.setTextColor(Ui.INKS[colorIdx])
+        colorDot.background = Glass.oval(this, view.ink, 0xFFFFFFFF.toInt(), 2)
         sizeBtn.text = "حجم " + Ui.SIZES[sizeIdx].toInt()
         penViews.forEachIndexed { i, pv ->
             pv.picked = !view.eraserMode && view.penIndex == quickPens[i] && view.ink == quickColors[i]

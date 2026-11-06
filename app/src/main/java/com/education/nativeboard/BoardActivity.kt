@@ -60,18 +60,14 @@ class BoardActivity : BaseInkActivity() {
     }
 
     private fun pickBackground() {
-        AlertDialog.Builder(this)
-            .setTitle("لون السبورة")
-            .setItems(Ui.BG_NAMES) { _, which ->
-                doc.bg = Ui.BGS[which]
-                view.bgColor = doc.bg
-                // الحبر يتعدّل عشان يبان على الخلفية
-                if (Ui.isDark(doc.bg) && Ui.isDark(view.ink)) view.ink = Color.WHITE
-                if (!Ui.isDark(doc.bg) && view.ink == Color.WHITE) view.ink = Color.BLACK
-                markDirty()
-                view.invalidate()
-            }
-            .show()
+        Glass.swatchDialog(this, "لون السبورة", Ui.BG_PALETTE, doc.bg) { c ->
+            doc.bg = c
+            view.bgColor = c
+            if (Ui.isDark(c) && Ui.isDark(view.ink)) view.ink = Color.WHITE
+            if (!Ui.isDark(c) && view.ink == Color.WHITE) view.ink = Color.BLACK
+            markDirty()
+            view.invalidate()
+        }
     }
 
     private fun pickFromLibrary() {

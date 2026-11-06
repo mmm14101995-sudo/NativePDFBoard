@@ -2,12 +2,15 @@ package com.education.nativeboard
 
 import android.content.Context
 import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
+import android.graphics.Shader
 import android.view.View
 
-// قلم مرسوم بشكل حقيقي: جسم ملون وسن حسب نوعه (حبر، فاين، ماركر، تظليل، رصاص)
+// قلم زجاجي: جسم بتدرج ولمعة وسن حسب النوع (حبر، فاين، ماركر، تظليل، رصاص)
 class PenIconView(ctx: Context, private val kind: String, private val body: Int) : View(ctx) {
     var picked: Boolean = false
         set(v) {
@@ -18,59 +21,81 @@ class PenIconView(ctx: Context, private val kind: String, private val body: Int)
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
     private val path = Path()
 
-    private fun poly(c: Canvas, pts: List<Pair<Float, Float>>) {
+    private fun shade(col: Int, f: Float): Int {
+        val m = if (f > 0f) 255 else 0
+        val t = Math.abs(f)
+        val r = Color.red(col)
+        val g = Color.green(col)
+        val b = Color.blue(col)
+        return Color.rgb(
+            (r + (m - r) * t).toInt(),
+            (g + (m - g) * t).toInt(),
+            (b + (m - b) * t).toInt()
+        )
+    }
+
+    // جسم زجاجي: تدرج أفقي وخط لمعة أبيض شفاف
+    private fun gloss(c: Canvas, l: Float, t: Float, r: Float, b: Float, rad: Float, col: Int) {
+        p.reset()
+        p.isAntiAlias = true
+        p.shader = LinearGradient(
+            l, 0f, r, 0f,
+            intArrayOf(shade(col, 0.5f), col, shade(col, -0.4f)),
+            floatArrayOf(0f, 0.4f, 1f),
+            Shader.TileMode.CLAMP
+        )
+        c.drawRoundRect(RectF(l, t, r, b), rad, rad, p)
+        p.shader = null
+        p.color = Color.argb(150, 255, 255, 255)
+        val w = r - l
+        c.drawRoundRect(RectF(l + w * 0.16f, t + 3f, l + w * 0.26f, b - 3f), 2f, 2f, p)
+    }
+
+    // شكل مضلّع بلون ثابت (للسن والتفاصيل)
+    private fun poly(c: Canvas, col: Int, vararg xy: Float) {
         path.reset()
-        path.moveTo(pts[0].first, pts[0].second)
-        for (i in 1 until pts.size) path.lineTo(pts[i].first, pts[i].second)
+        path.moveTo(xy[0], xy[1])
+        var i = 2
+        while (i + 1 < xy.size) {
+            path.lineTo(xy[i], xy[i + 1])
+            i += 2
+        }
         path.close()
+        p.reset()
+        p.isAntiAlias = true
+        p.color = col
         c.drawPath(path, p)
     }
 
     override fun onDraw(c: Canvas) {
-        val w = width.toFloat()
-        val h = height.toFloat()
-        if (w <= 0f || h <= 0f) return
-        val cx = w / 2f
-        val bw = w * 0.5f
-        val left = cx - bw / 2f
-        val right = cx + bw / 2f
-        val tipTop = h * 0.06f
-        val ringTop = h * 0.40f
-        val ringBot = ringTop + h * 0.05f
-        val bodyBot = h * 0.94f
-
-        if (picked) {
-            p.reset()
-            p.color = 0x3338BDF8
-            c.drawRoundRect(RectF(0f, 0f, w, h), w * 0.3f, w * 0.3f, p)
-        }
-
-        // السن حسب نوع القلم
-        p.reset()
-        p.isAntiAlias = true
-        p.color = if (kind == "pencil") 0xFFFDE68A.toInt() else body
+        if (width <= 0 || height <= 0) return
+        c.save()
+        c.scale(width / 40f, height / 60f)
         when (kind) {
-            "fineliner" -> poly(c, listOf(cx - bw * 0.04f to tipTop, cx + bw * 0.04f to tipTop, cx + bw * 0.2f to ringTop, cx - bw * 0.2f to ringTop))
-            "marker" -> poly(c, listOf(left to tipTop + h * 0.04f, right to tipTop + h * 0.04f, right to ringTop, left to ringTop))
-            "highlighter" -> poly(c, listOf(cx - bw * 0.4f to tipTop, cx + bw * 0.4f to tipTop, right to ringTop, left to ringTop))
-            "pencil" -> {
-                poly(c, listOf(cx - bw * 0.12f to tipTop, cx + bw * 0.12f to tipTop, right to ringTop, left to ringTop))
-                p.color = 0xFF1F2937.toInt()
-                poly(c, listOf(cx - bw * 0.05f to tipTop, cx + bw * 0.05f to tipTop, cx to tipTop - h * 0.02f))
+            "fountain" -> {
+                gloss(c, 12f, 4f, 28f, 30f, 5f, body)
+                poly(c, shade(body, -0.3f), 12f, 29f, 28f, 29f, 28f, 33f, 12f, 33f)
+                poly(c, 0xFFE2E8F0.toInt(), 14f, 33f, 26f, 33f, 20f, 56f)
+                poly(c, 0xFF64748B.toInt(), 19f, 40f, 21f, 40f, 20f, 52f)
             }
-            else -> poly(c, listOf(cx - bw * 0.08f to tipTop, cx + bw * 0.08f to tipTop, right to ringTop, left to ringTop))
+            "fineliner" -> {
+                gloss(c, 16f, 4f, 24f, 32f, 3f, body)
+                poly(c, shade(body, -0.2f), 16f, 32f, 24f, 32f, 20f, 56f)
+            }
+            "marker" -> {
+                gloss(c, 9f, 4f, 31f, 34f, 5f, body)
+                poly(c, shade(body, -0.5f), 9f, 36f, 31f, 36f, 27f, 56f, 13f, 56f)
+            }
+            "highlighter" -> {
+                gloss(c, 7f, 4f, 33f, 34f, 9f, body)
+                poly(c, shade(body, 0.25f), 9f, 32f, 31f, 32f, 29f, 47f, 11f, 47f)
+            }
+            "pencil" -> {
+                gloss(c, 14f, 4f, 26f, 36f, 3f, body)
+                poly(c, 0xFFFDE68A.toInt(), 14f, 36f, 26f, 36f, 20f, 56f)
+                poly(c, 0xFF111827.toInt(), 18f, 49f, 22f, 49f, 20f, 56f)
+            }
         }
-
-        // الحلقة الفضية
-        p.color = 0xFFCBD5E1.toInt()
-        c.drawRect(left, ringTop, right, ringBot, p)
-
-        // جسم القلم
-        p.color = body
-        c.drawRoundRect(RectF(left, ringBot, right, bodyBot), bw * 0.2f, bw * 0.2f, p)
-
-        // لمعة على الجسم
-        p.color = 0x44FFFFFF
-        c.drawRect(left + bw * 0.18f, ringBot + h * 0.04f, left + bw * 0.32f, bodyBot - h * 0.06f, p)
+        c.restore()
     }
 }

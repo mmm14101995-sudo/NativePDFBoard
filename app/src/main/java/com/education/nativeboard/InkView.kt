@@ -4,6 +4,10 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.LinearGradient
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffXfermode
+import android.graphics.Shader
 import android.graphics.DashPathEffect
 import android.graphics.Paint
 import android.graphics.Path
@@ -75,6 +79,7 @@ class InkView(ctx: Context) : View(ctx) {
     }
 
     override fun onDraw(c: Canvas) {
+        surface.shader = LinearGradient(0f, 0f, 0f, height.toFloat(), intArrayOf(0xFF1E2538.toInt(), 0xFF0B1020.toInt()), null, Shader.TileMode.CLAMP)
         c.drawRect(0f, 0f, width.toFloat(), height.toFloat(), surface)
         computePageRect()
         c.save()
@@ -84,6 +89,11 @@ class InkView(ctx: Context) : View(ctx) {
         paint.color = bgColor
         c.drawRect(pageRect, paint)
         pageBitmap?.let { c.drawBitmap(it, null, pageRect, null) }
+        // لمعة زجاجية خفيفة على الصفحة
+        paint.reset()
+        paint.shader = LinearGradient(pageRect.left, pageRect.top, pageRect.left, pageRect.top + pageRect.height() * 0.35f, intArrayOf(0x1CFFFFFF, 0x00FFFFFF), null, Shader.TileMode.CLAMP)
+        c.drawRect(pageRect, paint)
+        paint.shader = null
         val all = ArrayList(strokes)
         current?.let { all.add(it) }
         // التظليل تحت، والكتابة فوقه
@@ -121,6 +131,20 @@ class InkView(ctx: Context) : View(ctx) {
             val y = pageRect.top + st.pts[i + 1] * pageRect.height()
             if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
             i += 2
+        }
+        if (pen.highlight) paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.MULTIPLY)
+        if (pen.grain) {
+            // الرصاص: 3 خطوط رفيعة متجاورة بشفافية، فبيطلع شكل الجرافيت
+            val base = paint.alpha
+            paint.strokeWidth = w * 0.35f
+            paint.alpha = (base * 0.55f).toInt()
+            for (k in -1..1) {
+                c.save()
+                c.translate(k * w * 0.3f, k * w * 0.15f)
+                c.drawPath(path, paint)
+                c.restore()
+            }
+            return
         }
         c.drawPath(path, paint)
     }
