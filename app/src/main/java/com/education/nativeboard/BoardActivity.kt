@@ -1,14 +1,21 @@
 package com.education.nativeboard
 
 import android.app.AlertDialog
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
+import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
+import android.view.View
 import android.widget.LinearLayout
+import android.widget.Toast
 
-// سبورة فاضية بصفحات كتير، ولون خلفية تختاره، ومكتبة صور علمية
+// سبورة فاضية بصفحات (تبويبات)، ولون خلفية، وتسطير، ومكتبة علمية (جاهزة + صور المدرس)
 class BoardActivity : BaseInkActivity() {
+
+    companion object {
+        private const val REQ_IMG = 21
+        private const val ADD = "__add__"
+        private const val REMOVE = "__remove__"
+    }
 
     override fun pageTotal(): Int = doc.pageCount
 
@@ -17,6 +24,7 @@ class BoardActivity : BaseInkActivity() {
     override fun docTitle(): String = Names.board(this, doc.id, "سبورة")
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        setTheme(Prefs.themeRes(this))
         super.onCreate(savedInstanceState)
         Ui.immersive(this)
         val id = intent.getStringExtra("id") ?: run {
@@ -35,35 +43,16 @@ class BoardActivity : BaseInkActivity() {
         val pf = getSharedPreferences("board", MODE_PRIVATE)
         view.pattern = pf.getInt("pat_" + doc.id, 0)
         view.patternLevel = pf.getInt("lvl_" + doc.id, 1)
-        val file = doc.images[n]
-        view.pageBitmap = if (file == null) null else loadLibraryImage(file)
+        val key = doc.images[n]
+        view.pageBitmap = if (key == null) null else SciLibrary.load(this, key)
     }
 
-    // الأزرار الإضافية للسبورة: صفحة جديدة، لون الخلفية، المكتبة (كلها رموز)
+    // الأزرار الإضافية للسبورة (بكلام صغير في الوضع العادي)
     override fun extraButtons(row: LinearLayout) {
         row.addView(actionBtn("plus", "صفحة") { addPage() })
         row.addView(actionBtn("palette", "الخلفية") { pickBackground() })
         row.addView(actionBtn("library", "مكتبة") { pickFromLibrary() })
         row.addView(actionBtn("lines", "تسطير") { pickPattern() })
-    }
-
-    // تحميل الصورة بدقة تناسب الشاشة (مش أصغر ومش أكبر من اللازم)
-    private fun loadLibraryImage(file: String): Bitmap? {
-        return try {
-            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            assets.open("library/$file").use { BitmapFactory.decodeStream(it, null, bounds) }
-            val maxSide = maxOf(bounds.outWidth, bounds.outHeight)
-            val target = 2048
-            var sample = 1
-            while (maxSide / (sample * 2) >= target) sample *= 2
-            val opts = BitmapFactory.Options().apply {
-                inSampleSize = sample
-                inPreferredConfig = Bitmap.Config.ARGB_8888
-            }
-            assets.open("library/$file").use { BitmapFactory.decodeStream(it, null, opts) }
-        } catch (e: Exception) {
-            null
-        }
     }
 
     private fun addPage() {
@@ -85,47 +74,103 @@ class BoardActivity : BaseInkActivity() {
 
     // التسطير: ساده أو سطور أو مربعات أو نقط، وبعدين الحجم
     private fun pickPattern() {
-        val kinds = arrayOf("ساده", "سطور", "مربعات", "نقط")
-        AlertDialog.Builder(this)
-            .setItems(kinds) { _, k ->
-                val levels = arrayOf("صغير", "وسط", "كبير")
-                AlertDialog.Builder(this)
-                    .setItems(levels) { _, l ->
-                        getSharedPreferences("board", MODE_PRIVATE).edit()
-                            .putInt("pat_" + doc.id, k)
-                            .putInt("lvl_" + doc.id, l)
-                            .apply()
-                        view.pattern = k
-                        view.patternLevel = l
-                        view.invalidate()
-                    }
-                    .show()
+        val names = arrayOf("ساده", "سطور", "مربعات", "نقط")
+        val cards = (0..3).map { k -> Pickers.patternPreview(this, k, 1) to names[k] }
+        Pickers.grid(this, "نوع التسطير", cards) { k ->
+            val lvNames = arrayOf("صغير", "وسط", "كبير")
+            val lv = (0..2).map { l -> Pickers.patternPreview(this, k, l) to lvNames[l] }
+            Pickers.grid(this, "حجم التسطير", lv) { l ->
+                getSharedPreferences("board", MODE_PRIVATE).edit()
+                    .putInt("pat_" + doc.id, k)
+                    .putInt("lvl_" + doc.id, l)
+                    .apply()
+                view.pattern = k
+                view.patternLevel = l
+                view.invalidate()
             }
-            .show()
+        }
     }
 
+    // الصور الجاهزة من ملف المكتبة (library.json): اسم الملف + العنوان
+    private fun readAssetLibrary(): List<Pair<String, String>> = try {
+        val arr = org.json.JSONArray(assets.open("library/library.json").bufferedReader().use { it.readText() })
+        (0 until arr.length()).map {
+            val o = arr.getJSONObject(it)
+            o.getString("file") to o.getString("title")
+        }
+    } catch (e: Exception) {
+        emptyList()
+    }
+
+    // المكتبة العلمية: صور جاهزة + صور المدرس + إضافة صورة من الجهاز
     private fun pickFromLibrary() {
-        val items = try {
-            val arr = org.json.JSONArray(assets.open("library/library.json").bufferedReader().use { it.readText() })
-            (0 until arr.length()).map { arr.getJSONObject(it) }
-        } catch (e: Exception) {
-            emptyList()
+        val cards = ArrayList<Pair<View, String>>()
+        val actions = ArrayList<() -> Unit>()
+        cards.add(Pickers.iconPreview(this, "plus", ICON) to "إضافة صورة من جهازي")
+        actions.add { pickImageFile() }
+        if (doc.images[pageNo] != null) {
+            cards.add(Pickers.iconPreview(this, "eraser", ICON) to "إزالة من الصفحة")
+            actions.add { removeImage() }
         }
-        if (items.isEmpty()) {
-            AlertDialog.Builder(this)
-                .setMessage("المكتبة فاضية حالياً.")
-                .setPositiveButton("تمام", null)
-                .show()
-            return
+        readAssetLibrary().forEach { (file, title) ->
+            cards.add(Pickers.imagePreview(this, file) to title)
+            actions.add { setPageImage(file) }
         }
-        val titles = items.map { it.getString("title") as CharSequence }.toTypedArray()
-        AlertDialog.Builder(this)
-            .setTitle("المكتبة العلمية")
-            .setItems(titles) { _, which ->
-                doc.images[pageNo] = items[which].getString("file")
+        SciLibrary.userImages(this).forEach { key ->
+            cards.add(Pickers.imagePreview(this, key) to SciLibrary.title(key))
+            actions.add { setPageImage(key) }
+        }
+        cards.add(Pickers.iconPreview(this, "trash", ICON) to "حذف صورة من جهازي")
+        actions.add { deleteUserImage() }
+        Pickers.grid(this, "المكتبة العلمية", cards) { i -> actions[i]() }
+    }
+
+    private fun setPageImage(key: String) {
+        doc.images[pageNo] = key
+        markDirty()
+        goPage(pageNo)
+    }
+
+    private fun removeImage() {
+        doc.images.remove(pageNo)
+        markDirty()
+        goPage(pageNo)
+    }
+
+    private fun pickImageFile() {
+        val i = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "image/*"
+        }
+        startActivityForResult(i, REQ_IMG)
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        val uri = data?.data
+        if (requestCode == REQ_IMG && resultCode == RESULT_OK && uri != null) {
+            val key = SciLibrary.importImage(this, uri)
+            if (key != null) {
+                doc.images[pageNo] = key
                 markDirty()
                 goPage(pageNo)
+                Toast.makeText(this, "اتضافت الصورة للمكتبة", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this, "ما قدرناش نفتح الصورة", Toast.LENGTH_SHORT).show()
             }
-            .show()
+        }
+    }
+
+    private fun deleteUserImage() {
+        val users = SciLibrary.userImages(this)
+        if (users.isEmpty()) {
+            Toast.makeText(this, "مفيش صور مضافة من جهازك", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val cards = users.map { Pickers.imagePreview(this, it) to SciLibrary.title(it) }
+        Pickers.grid(this, "اختار الصورة اللي تتحذف", cards) { w ->
+            SciLibrary.delete(this, users[w])
+        }
     }
 }

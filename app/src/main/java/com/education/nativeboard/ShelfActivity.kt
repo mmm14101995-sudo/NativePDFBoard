@@ -25,6 +25,7 @@ class ShelfActivity : Activity() {
     private lateinit var shelves: LinearLayout
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        setTheme(Prefs.themeRes(this))
         super.onCreate(savedInstanceState)
         Ui.immersive(this)
         idx = intent.getIntExtra("idx", 0)

@@ -98,6 +98,19 @@ object Icons {
                 path.moveTo(20f, 16f); path.lineTo(20f, 20f); path.lineTo(16f, 20f)
                 path.moveTo(8f, 20f); path.lineTo(4f, 20f); path.lineTo(4f, 16f)
             }
+            "settings" -> {
+                c.drawCircle(12f, 12f, 3.5f, p)
+                for (k in 0 until 8) {
+                    val a = k * Math.PI / 4
+                    path.moveTo((12 + 6f * Math.cos(a)).toFloat(), (12 + 6f * Math.sin(a)).toFloat())
+                    path.lineTo((12 + 9.5f * Math.cos(a)).toFloat(), (12 + 9.5f * Math.sin(a)).toFloat())
+                }
+            }
+            "book" -> {
+                path.moveTo(3f, 5f); path.lineTo(9f, 5f); path.quadTo(11f, 5f, 12f, 7f)
+                path.quadTo(13f, 5f, 15f, 5f); path.lineTo(21f, 5f); path.lineTo(21f, 19f); path.lineTo(15f, 19f)
+                path.quadTo(13f, 19f, 12f, 20f); path.quadTo(11f, 19f, 9f, 19f); path.lineTo(3f, 19f); path.close()
+            }
             "home" -> {
                 path.moveTo(4f, 11f); path.lineTo(12f, 4f); path.lineTo(20f, 11f)
                 path.moveTo(6f, 10f); path.lineTo(6f, 20f); path.lineTo(18f, 20f); path.lineTo(18f, 10f)

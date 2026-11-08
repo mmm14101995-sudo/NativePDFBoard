@@ -7,54 +7,95 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.text.TextUtils
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewOutlineProvider
-import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
-// الصفحة الرئيسية: هيدر متدرج بالإحصائيات، إجراءات سريعة، متابعة القراءة،
-// رفوف المكتبات بالأغلفة، وشبكة السبورات
+// الشاشة الرئيسية: هيدر بالساعة، وأربع تبويبات: القارئ، المكتبات، السبورات، الإعدادات
 class MainActivity : Activity() {
+    private lateinit var root: FrameLayout
     private lateinit var body: LinearLayout
+    private lateinit var tabBar: LinearLayout
+    private var tab = 0
+    private var clockTime: TextView? = null
+    private var clockDate: TextView? = null
+    private val handler = Handler(Looper.getMainLooper())
+    private val fmtTime = SimpleDateFormat("HH:mm", Locale.ENGLISH)
+    private val fmtDate = SimpleDateFormat("EEEE d MMMM", Locale("ar"))
+    private val tick = object : Runnable {
+        override fun run() {
+            val now = Date()
+            clockTime?.text = fmtTime.format(now)
+            clockDate?.text = fmtDate.format(now)
+            handler.postDelayed(this, 1000L)
+        }
+    }
 
-    private val INK = 0xFF0F172A.toInt()
+    private val INK: Int get() = if (Prefs.dark(this)) 0xFFE2E8F0.toInt() else 0xFF0F172A.toInt()
     private val MUTED = 0xFF64748B.toInt()
-    private val LINE = 0xFFE2E8F0.toInt()
-    private val SURFACE = Color.WHITE
-    private val BG = 0xFFF1F5F9.toInt()
-    private val NAVY_A = 0xFF1E3A8A.toInt()
-    private val NAVY_B = 0xFF2563EB.toInt()
+    private val LINE: Int get() = if (Prefs.dark(this)) 0xFF334155.toInt() else 0xFFE2E8F0.toInt()
+    private val SURFACE: Int get() = when {
+        Prefs.dark(this) && Prefs.glass(this) -> 0x661E293B
+        Prefs.dark(this) -> 0xFF1E293B.toInt()
+        Prefs.glass(this) -> 0x99FFFFFF.toInt()
+        else -> Color.WHITE
+    }
+    private val BG: Int get() = if (Prefs.dark(this)) 0xFF0B1020.toInt() else 0xFFF1F5F9.toInt()
+    private val NAVY_A: Int get() = Prefs.accentA(this)
+    private val NAVY_B: Int get() = Prefs.accentB(this)
     private val BOARD_A = 0xFFA78BFA.toInt()
     private val BOARD_B = 0xFFEC4899.toInt()
 
     private fun dp(v: Int): Int = Ui.dp(this, v)
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        setTheme(Prefs.themeRes(this))
         super.onCreate(savedInstanceState)
         Ui.immersive(this)
-        val root = FrameLayout(this)
-        root.setBackgroundColor(BG)
+        root = FrameLayout(this)
         body = LinearLayout(this)
         body.orientation = LinearLayout.VERTICAL
         val scroll = ScrollView(this)
         scroll.isVerticalScrollBarEnabled = false
         scroll.addView(body)
-        root.addView(scroll, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        root.addView(scroll, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT).apply {
+            setMargins(0, 0, 0, dp(84))
+        })
+        tabBar = LinearLayout(this)
+        tabBar.orientation = LinearLayout.HORIZONTAL
+        tabBar.setPadding(dp(6), dp(6), dp(6), dp(6))
+        root.addView(tabBar, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM).apply {
+            setMargins(dp(12), 0, dp(12), dp(12))
+        })
         setContentView(root)
     }
 
     override fun onResume() {
         super.onResume()
+        root.setBackgroundColor(BG)
         render()
+        handler.removeCallbacks(tick)
+        handler.post(tick)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        handler.removeCallbacks(tick)
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -68,20 +109,14 @@ class MainActivity : Activity() {
         val boards = Store.listBoards(this)
         val books = libs.sumOf { it.books.size }
         body.addView(header(libs.size, books, boards.size))
-
-        val prefs = getSharedPreferences("home", MODE_PRIVATE)
-        val last = prefs.getString("last", null)
-        val type = prefs.getInt("type", 0)
-        if (last != null && (type == 1 || Store.pdfFile(this, last).isFile)) {
-            val page = getSharedPreferences("reading", MODE_PRIVATE).getInt(last, 1)
-            body.addView(inset(continueCard(last, type, page)))
+        when (tab) {
+            0 -> readerTab(libs, books)
+            1 -> librariesTab(libs)
+            2 -> boardsTab(boards)
+            else -> settingsTab()
         }
-
-        body.addView(sectionTitle("رفوف المكتبات", "${libs.size}/${Library.MAX_LIBS}"))
-        body.addView(shelfRow(libs))
-        body.addView(sectionTitle("السبورات", "${boards.size}"))
-        body.addView(boardsGrid(boards))
-        body.addView(View(this), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(40)))
+        body.addView(View(this), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(24)))
+        renderTabBar()
     }
 
     // ---------- عناصر مشتركة ----------
@@ -104,13 +139,11 @@ class MainActivity : Activity() {
         setStroke(dp(1), 0xFF94A3B8.toInt(), dp(6).toFloat(), dp(4).toFloat())
     }
 
-    // ظل خفيف يتبع شكل الكارت
     private fun lift(v: View, e: Int) {
         v.elevation = dp(e).toFloat()
         v.outlineProvider = ViewOutlineProvider.BACKGROUND
     }
 
-    // تأثير الضغط (ripple)
     private fun ripple(v: View) {
         val tv = TypedValue()
         theme.resolveAttribute(android.R.attr.selectableItemBackground, tv, true)
@@ -123,6 +156,14 @@ class MainActivity : Activity() {
         addView(v, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
     }
 
+    private fun emptyText(s: String): TextView = TextView(this).apply {
+        text = s
+        textSize = 13f
+        setTextColor(MUTED)
+        gravity = Gravity.CENTER
+        setPadding(dp(20), dp(24), dp(20), dp(8))
+    }
+
     // ---------- الهيدر ----------
 
     private fun header(libs: Int, books: Int, boards: Int): View {
@@ -133,59 +174,105 @@ class MainActivity : Activity() {
             val r = dp(28).toFloat()
             cornerRadii = floatArrayOf(0f, 0f, 0f, 0f, r, r, r, r)
         }
-
         val top = LinearLayout(this)
         top.orientation = LinearLayout.HORIZONTAL
         top.gravity = Gravity.CENTER_VERTICAL
         val titles = LinearLayout(this)
         titles.orientation = LinearLayout.VERTICAL
-        titles.addView(label("السبورة والكتب", 26f, Color.WHITE, true))
-        titles.addView(label("$books كتاب  ·  $libs مكتبة  ·  $boards سبورة", 13f, 0xCCFFFFFF.toInt()).apply {
+        titles.addView(label("السبورة والكتب", 24f, Color.WHITE, true))
+        titles.addView(label("$books كتاب  ·  $libs مكتبة  ·  $boards سبورة", 12f, 0xCCFFFFFF.toInt()).apply {
             setPadding(0, dp(4), 0, 0)
         })
         top.addView(titles, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        top.addView(glassBtn("plus") { newLibrary() })
+        top.addView(clockBlock())
         h.addView(top)
-
-        val actions = LinearLayout(this)
-        actions.orientation = LinearLayout.HORIZONTAL
-        actions.addView(quickTile("pdf", "كتاب جديد") { chooseLibraryForBook() }, quickParams(0, 6))
-        actions.addView(quickTile("board", "سبورة جديدة") { newBoard() }, quickParams(6, 6))
-        actions.addView(quickTile("library", "مكتبة جديدة") { newLibrary() }, quickParams(6, 0))
-        h.addView(actions, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-            setMargins(0, dp(20), 0, 0)
-        })
         return h
     }
 
-    private fun quickParams(left: Int, right: Int): LinearLayout.LayoutParams =
-        LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
-            setMargins(dp(left), 0, dp(right), 0)
+    private fun clockBlock(): View {
+        val col = LinearLayout(this)
+        col.orientation = LinearLayout.VERTICAL
+        col.gravity = Gravity.END
+        val t = label(fmtTime.format(Date()), 20f, Color.WHITE, true)
+        t.gravity = Gravity.END
+        val d = label(fmtDate.format(Date()), 11f, 0xCCFFFFFF.toInt())
+        d.gravity = Gravity.END
+        clockTime = t
+        clockDate = d
+        col.addView(t)
+        col.addView(d)
+        return col
+    }
+
+    // ---------- شريط التبويبات السفلي ----------
+
+    private fun renderTabBar() {
+        tabBar.removeAllViews()
+        tabBar.background = roundBg(if (Prefs.dark(this)) 0xF20F172A.toInt() else 0xF2FFFFFF.toInt(), 26)
+        lift(tabBar, 8)
+        val items = listOf("book" to "القارئ", "library" to "المكتبات", "board" to "السبورات", "settings" to "الإعدادات")
+        items.forEachIndexed { i, pair ->
+            val sel = i == tab
+            val item = LinearLayout(this)
+            item.orientation = LinearLayout.VERTICAL
+            item.gravity = Gravity.CENTER
+            item.setPadding(dp(4), dp(8), dp(4), dp(8))
+            item.background = roundBg(if (sel) NAVY_B else 0x00000000, 20)
+            ripple(item)
+            item.setOnClickListener {
+                tab = i
+                render()
+            }
+            item.addView(IconView(this, pair.first, if (sel) Color.WHITE else MUTED), LinearLayout.LayoutParams(dp(22), dp(22)))
+            item.addView(label(pair.second, 11f, if (sel) Color.WHITE else MUTED, sel).apply {
+                setPadding(0, dp(2), 0, 0)
+            })
+            tabBar.addView(item, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                setMargins(dp(2), 0, dp(2), 0)
+            })
         }
-
-    private fun glassBtn(icon: String, onClick: () -> Unit): View = FrameLayout(this).apply {
-        background = roundBg(0x33FFFFFF, 22)
-        ripple(this)
-        setOnClickListener { onClick() }
-        addView(IconView(this@MainActivity, icon, Color.WHITE), FrameLayout.LayoutParams(dp(22), dp(22), Gravity.CENTER))
-        layoutParams = LinearLayout.LayoutParams(dp(44), dp(44))
     }
 
-    private fun quickTile(icon: String, text: String, onClick: () -> Unit): View = LinearLayout(this).apply {
-        orientation = LinearLayout.VERTICAL
-        gravity = Gravity.CENTER
-        setPadding(dp(10), dp(14), dp(10), dp(14))
-        background = roundBg(0x26FFFFFF, 18)
-        ripple(this)
-        setOnClickListener { onClick() }
-        addView(IconView(this@MainActivity, icon, Color.WHITE), LinearLayout.LayoutParams(dp(24), dp(24)))
-        addView(label(text, 12f, Color.WHITE, true).apply {
-            gravity = Gravity.CENTER
-            setPadding(0, dp(8), 0, 0)
-        })
+    // ---------- تبويب القارئ: متابعة القراءة + كل الكتب ----------
+
+    private fun readerTab(libs: List<Lib>, books: Int) {
+        val prefs = getSharedPreferences("home", MODE_PRIVATE)
+        val last = prefs.getString("last", null)
+        val type = prefs.getInt("type", 0)
+        if (last != null && (type == 1 || Store.pdfFile(this, last).isFile)) {
+            val page = getSharedPreferences("reading", MODE_PRIVATE).getInt(last, 1)
+            body.addView(inset(continueCard(last, type, page)))
+        }
+        body.addView(sectionTitle("كل الكتب", "$books كتاب"))
+        val all = libs.flatMap { it.books }
+        if (all.isEmpty()) {
+            body.addView(emptyText("مفيش كتب لسه. ضيف كتاب PDF من تبويب المكتبات."))
+            return
+        }
+        all.forEach { body.addView(inset(bookRow(it))) }
     }
 
-    // ---------- متابعة القراءة ----------
+    private fun bookRow(id: String): View = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        setPadding(dp(10), dp(10), dp(12), dp(10))
+        background = roundBg(SURFACE, 18)
+        lift(this, 2)
+        ripple(this)
+        setOnClickListener { openReader(id) }
+        addView(coverView(this@MainActivity, id, 40, 56))
+        addView(LinearLayout(this@MainActivity).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), 0, 0, 0)
+            addView(label(id.substringAfter("__", id), 15f, INK, true).apply {
+                maxLines = 1
+                ellipsize = TextUtils.TruncateAt.END
+            })
+            val page = getSharedPreferences("reading", MODE_PRIVATE).getInt(id, 1)
+            addView(label("صفحة $page", 12f, MUTED).apply { setPadding(0, dp(2), 0, 0) })
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        addView(IconView(this@MainActivity, "next", NAVY_B), LinearLayout.LayoutParams(dp(20), dp(20)))
+    }
 
     private fun continueCard(id: String, type: Int, page: Int): View {
         val card = LinearLayout(this)
@@ -224,17 +311,47 @@ class MainActivity : Activity() {
         return card
     }
 
-    // ---------- الأقسام ----------
-
     private fun sectionTitle(title: String, trailing: String): View = LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
-        setPadding(dp(20), dp(24), dp(20), dp(12))
+        setPadding(dp(20), dp(20), dp(20), dp(12))
         addView(label(title, 18f, INK, true), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         addView(label(trailing, 13f, MUTED))
     }
 
-    // رفوف المكتبات: صف أفقي بكروت بالأغلفة
+    // ---------- تبويب المكتبات: الرفوف + استيراد PDF + المكتبة العلمية ----------
+
+    private fun librariesTab(libs: List<Lib>) {
+        body.addView(sectionTitle("رفوف المكتبات", "${libs.size}/${Library.MAX_LIBS}"))
+        body.addView(shelfRow(libs))
+        body.addView(inset(genericCard("pdf", "استيراد كتاب PDF", "اختار مكتبة وضيف ملف PDF فيها") { chooseLibraryForBook() }))
+        body.addView(inset(genericCard("library", "المكتبة العلمية", "صور للشرح، وإضافة صورك من جهازك") {
+            startActivity(Intent(this, ScienceLibraryActivity::class.java))
+        }))
+    }
+
+    private fun genericCard(icon: String, title: String, sub: String, onClick: () -> Unit): View = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        setPadding(dp(12), dp(14), dp(12), dp(14))
+        background = roundBg(SURFACE, 20)
+        lift(this, 2)
+        ripple(this)
+        setOnClickListener { onClick() }
+        addView(FrameLayout(this@MainActivity).apply {
+            background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(NAVY_A, NAVY_B)).apply {
+                cornerRadius = dp(12).toFloat()
+            }
+            addView(IconView(this@MainActivity, icon, Color.WHITE), FrameLayout.LayoutParams(dp(22), dp(22), Gravity.CENTER))
+        }, LinearLayout.LayoutParams(dp(46), dp(46)))
+        addView(LinearLayout(this@MainActivity).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), 0, 0, 0)
+            addView(label(title, 15f, INK, true))
+            addView(label(sub, 12f, MUTED).apply { setPadding(0, dp(3), 0, 0) })
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+    }
+
     private fun shelfRow(libs: List<Lib>): View {
         val scroll = HorizontalScrollView(this)
         scroll.isHorizontalScrollBarEnabled = false
@@ -256,7 +373,6 @@ class MainActivity : Activity() {
         lift(card, 4)
         ripple(card)
         card.layoutParams = LinearLayout.LayoutParams(dp(150), dp(264)).apply { setMargins(0, 0, dp(12), dp(8)) }
-
         val cover: View = if (lib.books.isNotEmpty()) {
             coverView(this, lib.books[0], 126, 168)
         } else {
@@ -283,7 +399,6 @@ class MainActivity : Activity() {
         return card
     }
 
-    // شريط امتلاء الرف
     private fun progressBar(n: Int): View {
         val bar = LinearLayout(this)
         bar.orientation = LinearLayout.HORIZONTAL
@@ -310,7 +425,13 @@ class MainActivity : Activity() {
         addView(label("مكتبة جديدة", 13f, NAVY_B, true).apply { setPadding(0, dp(10), 0, 0) })
     }
 
-    // شبكة السبورات: كارتين في الصف
+    // ---------- تبويب السبورات ----------
+
+    private fun boardsTab(boards: List<String>) {
+        body.addView(sectionTitle("السبورات", "${boards.size}"))
+        body.addView(boardsGrid(boards))
+    }
+
     private fun boardsGrid(boards: List<String>): View {
         val grid = LinearLayout(this)
         grid.orientation = LinearLayout.VERTICAL
@@ -353,7 +474,7 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(12), dp(10), dp(12), dp(12))
             addView(label(Names.board(this@MainActivity, id, "سبورة ${i + 1}"), 15f, INK, true))
-            addView(label("اضغط للفتح · مطوّل للحذف", 11f, MUTED))
+            addView(label("اضغط للفتح · مطوّل للخيارات", 11f, MUTED))
         })
     }
 
@@ -371,9 +492,84 @@ class MainActivity : Activity() {
         addView(label("سبورة جديدة", 13f, BOARD_B, true).apply { setPadding(0, dp(10), 0, 0) })
     }
 
+    // ---------- تبويب الإعدادات: الوضع + الثيم + الزجاجي ----------
+
+    private fun settingsTab() {
+        body.addView(sectionTitle("الوضع", ""))
+        body.addView(inset(modeRow()))
+        body.addView(sectionTitle("ثيم الألوان", ""))
+        body.addView(inset(accentRow()))
+        body.addView(sectionTitle("التأثيرات", ""))
+        body.addView(inset(glassRow()))
+    }
+
+    private fun modeRow(): View {
+        val row = LinearLayout(this)
+        row.orientation = LinearLayout.HORIZONTAL
+        val names = listOf("تلقائي", "نهاري", "ليلي")
+        names.forEachIndexed { i, name ->
+            val sel = Prefs.mode(this) == i
+            row.addView(label(name, 14f, if (sel) Color.WHITE else INK, sel).apply {
+                gravity = Gravity.CENTER
+                setPadding(0, dp(14), 0, dp(14))
+                background = roundBg(if (sel) NAVY_B else SURFACE, 16)
+                ripple(this)
+                setOnClickListener {
+                    Prefs.setMode(this@MainActivity, i)
+                    recreate()
+                }
+            }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                setMargins(dp(4), 0, dp(4), 0)
+            })
+        }
+        return row
+    }
+
+    private fun accentRow(): View {
+        val row = LinearLayout(this)
+        row.orientation = LinearLayout.HORIZONTAL
+        row.gravity = Gravity.CENTER
+        row.setPadding(0, dp(8), 0, dp(8))
+        for (i in 0 until Prefs.ACCENT_COUNT) {
+            val sel = Prefs.accent(this) == i
+            val dot = FrameLayout(this)
+            dot.background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(Prefs.accentColor(i))
+                if (sel) setStroke(dp(3), INK)
+            }
+            dot.setOnClickListener {
+                Prefs.setAccent(this, i)
+                recreate()
+            }
+            row.addView(dot, LinearLayout.LayoutParams(dp(52), dp(52)).apply { setMargins(dp(8), 0, dp(8), 0) })
+        }
+        return row
+    }
+
+    private fun glassRow(): View {
+        val row = LinearLayout(this)
+        row.orientation = LinearLayout.HORIZONTAL
+        row.gravity = Gravity.CENTER_VERTICAL
+        row.setPadding(dp(16), dp(14), dp(12), dp(14))
+        row.background = roundBg(SURFACE, 18)
+        row.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(label("الوضع الزجاجي", 15f, INK, true))
+            addView(label("كروت وأشرطة شفافة بإطار مضيء", 12f, MUTED).apply { setPadding(0, dp(3), 0, 0) })
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        val sw = Switch(this)
+        sw.isChecked = Prefs.glass(this)
+        sw.setOnCheckedChangeListener { _, v ->
+            Prefs.setGlass(this, v)
+            render()
+        }
+        row.addView(sw)
+        return row
+    }
+
     // ---------- الأفعال ----------
 
-    // قايمة الضغط المطوّل: إعادة تسمية أو حذف
     private fun itemMenu(title: String, onRename: () -> Unit, onDelete: () -> Unit) {
         AlertDialog.Builder(this)
             .setTitle(title)
@@ -383,7 +579,7 @@ class MainActivity : Activity() {
     }
 
     private fun renameDialog(current: String, onSave: (String) -> Unit) {
-        val input = EditText(this)
+        val input = android.widget.EditText(this)
         input.setText(current)
         input.setSelection(current.length)
         input.setPadding(dp(20), dp(12), dp(20), dp(12))
@@ -407,7 +603,6 @@ class MainActivity : Activity() {
         render()
     }
 
-    // كتاب جديد: بنختار المكتبة الأول، وبعدين بنفتح ملف الـ PDF
     private fun chooseLibraryForBook() {
         if (Library.all(this).isEmpty()) Library.create(this, "مكتبتي")
         val libs = Library.all(this)

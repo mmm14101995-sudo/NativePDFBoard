@@ -4,8 +4,11 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.pdf.PdfDocument
+import android.content.res.ColorStateList
+import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.view.Gravity
@@ -32,7 +35,7 @@ abstract class BaseInkActivity : Activity() {
     protected lateinit var view: InkView
     protected var pageNo = 1
     protected var dirty = false
-    protected val ICON = Color.parseColor("#1E293B")
+    protected val ICON: Int get() = if (Prefs.dark(this)) 0xFFE2E8F0.toInt() else 0xFF1E293B.toInt()
     private val WHITE = Color.WHITE
 
     private val undo = ArrayList<ArrayList<Stroke>>()
@@ -88,15 +91,24 @@ abstract class BaseInkActivity : Activity() {
         setColor(c)
     }
 
-    private fun panelBg(r: Int): GradientDrawable = GradientDrawable().apply {
-        cornerRadius = dp(r).toFloat()
-        setColor(0xF2F8FAFC.toInt())
-        setStroke(dp(1), 0x1F0F172A)
+    private fun panelColor(): Int = when {
+        Prefs.dark(this) && Prefs.glass(this) -> 0x661E293B
+        Prefs.dark(this) -> 0xF21E293B.toInt()
+        Prefs.glass(this) -> 0x88FFFFFF.toInt()
+        else -> 0xF2F8FAFC.toInt()
     }
+
+    private fun panelBg(r: Int): Drawable =
+        if (Prefs.glass(this)) Metal.panel(this, r, Prefs.dark(this))
+        else GradientDrawable().apply {
+            cornerRadius = dp(r).toFloat()
+            setColor(panelColor())
+            setStroke(dp(1), 0x1F0F172A)
+        }
 
     private fun headerBg(): GradientDrawable = GradientDrawable(
         GradientDrawable.Orientation.LEFT_RIGHT,
-        intArrayOf(0xFF1E3A8A.toInt(), 0xFF2563EB.toInt())
+        intArrayOf(Prefs.accentA(this), Prefs.accentB(this))
     )
 
     private fun oval(c: Int): GradientDrawable = GradientDrawable().apply {
@@ -135,7 +147,7 @@ abstract class BaseInkActivity : Activity() {
             addView(well)
             addView(TextView(this@BaseInkActivity).apply {
                 this.text = text
-                setTextColor(0xFF334155.toInt())
+                setTextColor(ICON)
                 textSize = 10f
                 gravity = Gravity.CENTER
             })
@@ -272,6 +284,16 @@ abstract class BaseInkActivity : Activity() {
         col.addView(rainbowTile { openCustomColor() })
         col.addView(hSep())
         col.addView(sizeTile())
+        col.addView(hSep())
+        col.addView(ibtn("select", ICON) { toggleSelect() })
+        col.addView(ibtn("hand", ICON) { toggleHand() })
+        col.addView(ibtn("note", ICON) { addNote() })
+        col.addView(ibtn("mind", ICON) { addMind() })
+        col.addView(ibtn("trash", ICON) { confirmClear() })
+        col.addView(hSep())
+        col.addView(presetTile(6, 10))
+        col.addView(presetTile(12, 40))
+        col.addView(presetTile(22, 80))
         return col
     }
 
@@ -441,6 +463,17 @@ abstract class BaseInkActivity : Activity() {
         addView(dot, FrameLayout.LayoutParams(dp(22), dp(22), Gravity.CENTER))
     }
 
+    private fun presetTile(dotDp: Int, progress: Int): FrameLayout = FrameLayout(this).apply {
+        layoutParams = LinearLayout.LayoutParams(dp(40), dp(40))
+        background = roundFill(0x140F172A, 12)
+        setOnClickListener {
+            sizeProgress = progress
+            view.sizeLevel = sizeLevelOf(progress)
+            refreshBar()
+        }
+        addView(View(this@BaseInkActivity).apply { background = oval(ICON) }, FrameLayout.LayoutParams(dp(dotDp), dp(dotDp), Gravity.CENTER))
+    }
+
     private fun sizeTile(): FrameLayout = FrameLayout(this).apply {
         layoutParams = LinearLayout.LayoutParams(dp(40), dp(40))
         setOnClickListener { openSizeDialog() }
@@ -512,12 +545,16 @@ abstract class BaseInkActivity : Activity() {
     }
 
     private fun kindOf(p: Int): String = when (p) {
-        0, 1, 2 -> "fountain"
-        3, 4, 9 -> "fineliner"
+        0 -> "fountain"
+        1 -> "gel"
+        2 -> "nib"
+        3, 4 -> "fineliner"
         5, 11 -> "brush"
         6 -> "pencil"
-        7, 10 -> "marker"
+        7 -> "marker"
         8 -> "highlighter"
+        9 -> "dotted"
+        10 -> "neon"
         12 -> "smart"
         else -> "fountain"
     }
@@ -624,11 +661,21 @@ abstract class BaseInkActivity : Activity() {
     }
 
     private fun confirmClear() {
-        AlertDialog.Builder(this)
-            .setMessage("تمسح كل كتابة الصفحة دي؟")
-            .setPositiveButton("مسح") { _, _ -> clearPage() }
-            .setNegativeButton("إلغاء", null)
-            .show()
+        val cards = listOf(
+            Pickers.iconPreview(this, "eraser", ICON) to "الكتابة بس",
+            Pickers.iconPreview(this, "note", ICON) to "الملاحظات والخرايط",
+            Pickers.iconPreview(this, "trash", ICON) to "الصفحة كلها"
+        )
+        Pickers.grid(this, "اختار اللي عايز تمسحه", cards) { i ->
+            if (i == 0 || i == 2) clearPage()
+            if (i == 1 || i == 2) {
+                view.objects.clear()
+                view.selected = -1
+                dirty = true
+                view.invalidate()
+                refreshBar()
+            }
+        }
     }
 
     private fun clearPage() {
@@ -671,7 +718,7 @@ abstract class BaseInkActivity : Activity() {
     }
 
     // حجم القلم: شريط من رفيع (شمال) لتخين (يمين)، ودايرة فوق بتكبر وتصغر
-    private fun sizeLevelOf(p: Int): Float = 2f + p * 0.14f
+    private fun sizeLevelOf(p: Int): Float = 2f + p * 0.6f
 
     private fun openSizeDialog() {
         val box = LinearLayout(this)
@@ -696,6 +743,12 @@ abstract class BaseInkActivity : Activity() {
         track.addView(thin, LinearLayout.LayoutParams(dp(4), dp(4)))
         val bar = SeekBar(this)
         bar.max = 100
+        bar.progressTintList = ColorStateList.valueOf(Prefs.accentB(this))
+        bar.progressBackgroundTintList = ColorStateList.valueOf(0x40808080)
+        bar.thumbTintList = ColorStateList.valueOf(Color.WHITE)
+        bar.progressTintList = ColorStateList.valueOf(0xFF2563EB.toInt())
+        bar.progressBackgroundTintList = ColorStateList.valueOf(0xFFCBD5E1.toInt())
+        bar.thumbTintList = ColorStateList.valueOf(0xFF0EA5E9.toInt())
         bar.progress = sizeProgress
         bar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(sb: SeekBar?, p: Int, fromUser: Boolean) {
@@ -869,7 +922,7 @@ abstract class BaseInkActivity : Activity() {
         val list = view.objects
         list.add(PageObj("note", 0.36f, 0.36f, 0.24f, 0.18f, "اكتب هنا"))
         view.selected = list.size - 1
-        view.selectMode = true
+        view.selectMode = false
         dirty = true
         view.invalidate()
         refreshBar()
@@ -903,52 +956,43 @@ abstract class BaseInkActivity : Activity() {
     }
 
     private fun addMind() {
-        val items = arrayOf("خريطة دايرية", "شجرة", "أربع فقاعات")
-        AlertDialog.Builder(this)
-            .setTitle("اختار القالب")
-            .setItems(items) { _, k ->
-                view.objects.add(PageObj("mind", 0.25f, 0.3f, 0.5f, 0.42f, MindMap.encode(MindMap.template(k))))
-                view.selected = view.objects.size - 1
-                view.selectMode = true
-                dirty = true
-                view.invalidate()
-                refreshBar()
-            }
-            .show()
+        val names = arrayOf("دايرية", "شجرة", "فقاعات")
+        val cards = (0..2).map { k -> Pickers.mindPreview(this, MindMap.template(k)) to names[k] }
+        Pickers.grid(this, "اختار شكل الخريطة", cards) { k ->
+            view.objects.add(PageObj("mind", 0.25f, 0.3f, 0.5f, 0.42f, MindMap.encode(MindMap.template(k))))
+            view.selected = view.objects.size - 1
+            view.selectMode = true
+            dirty = true
+            view.invalidate()
+            refreshBar()
+        }
     }
 
     // قايمة الضغط المطوّل على العنصر
     private fun showObjectMenu(i: Int) {
         val o = view.objects.getOrNull(i) ?: return
-        val items = ArrayList<String>()
-        if (o.kind == "note") items.add("تعديل النص")
-        if (o.kind == "mind") {
-            items.add("تعديل فرع")
-            items.add("إضافة فرع")
+        val cards = ArrayList<Pair<View, String>>()
+        val actions = ArrayList<() -> Unit>()
+        if (o.kind == "note") {
+            cards.add(Pickers.iconPreview(this, "note", ICON) to "تعديل النص")
+            actions.add { editNoteText(i) }
         }
-        items.add("حذف")
-        val labels: Array<CharSequence> = items.map { it as CharSequence }.toTypedArray()
-        AlertDialog.Builder(this)
-            .setItems(labels) { _, w ->
-                when (labels[w]) {
-                    "تعديل النص" -> editNoteText(i)
-                    "تعديل فرع" -> pickNode(i) { idx -> renameNode(i, idx) }
-                    "إضافة فرع" -> pickNode(i) { idx -> addChild(i, idx) }
-                    "حذف" -> deleteObject(i)
-                    else -> Unit
-                }
-            }
-            .show()
+        if (o.kind == "mind") {
+            cards.add(Pickers.iconPreview(this, "mind", ICON) to "تعديل فرع")
+            actions.add { pickNode(i) { idx -> renameNode(i, idx) } }
+            cards.add(Pickers.iconPreview(this, "plus", ICON) to "إضافة فرع")
+            actions.add { pickNode(i) { idx -> addChild(i, idx) } }
+        }
+        cards.add(Pickers.iconPreview(this, "trash", ICON) to "حذف")
+        actions.add { deleteObject(i) }
+        Pickers.grid(this, "اختار", cards) { w -> actions[w]() }
     }
 
     private fun pickNode(i: Int, onPick: (Int) -> Unit) {
         val nodes = MindMap.decode(view.objects[i].text)
         if (nodes.isEmpty()) return
-        val labels = ArrayList<CharSequence>()
-        nodes.forEach { labels.add(it.text.ifBlank { "…" }) }
-        AlertDialog.Builder(this)
-            .setItems(labels.toTypedArray()) { _, w -> onPick(w) }
-            .show()
+        val cards = nodes.map { n -> Pickers.iconPreview(this, "mind", ICON) to (if (n.text.isBlank()) "…" else n.text) }
+        Pickers.grid(this, "اختار الفرع", cards) { w -> onPick(w) }
     }
 
     private fun renameNode(i: Int, idx: Int) {
@@ -1016,23 +1060,18 @@ abstract class BaseInkActivity : Activity() {
     // نختار السبورة اللي هتتحط فيها الصورة المقصوصة
     private fun pickBoardForCrop(key: String, aspect: Float) {
         val ids = Store.listBoards(this)
-        val labels = ArrayList<CharSequence>()
-        ids.forEach { labels.add(Names.board(this, it, "سبورة")) }
-        labels.add("＋ سبورة جديدة")
-        AlertDialog.Builder(this)
-            .setTitle("أضيف القص لأنهي سبورة؟")
-            .setItems(labels.toTypedArray()) { _, w ->
-                val id = if (w < ids.size) ids[w] else "board_" + System.currentTimeMillis()
-                val target = Store.load(this, id, true)
-                if (target.pageCount < 1) target.pageCount = 1
-                // الطول بيتحسب من نسبة الصورة (الصفحة تقريباً A4)
-                val hN = 0.5f / aspect / 1.414f
-                target.objsOf(1).add(PageObj("image", 0.25f, 0.2f, 0.5f, hN, "", key))
-                Store.save(this, target)
-                Toast.makeText(this, "اتضافت الصورة للسبورة", Toast.LENGTH_SHORT).show()
-            }
-            .setNegativeButton("إلغاء", null)
-            .show()
+        val cards = ArrayList<Pair<View, String>>()
+        ids.forEach { cards.add(Pickers.iconPreview(this, "board", ICON) to Names.board(this, it, "سبورة")) }
+        cards.add(Pickers.iconPreview(this, "plus", ICON) to "سبورة جديدة")
+        Pickers.grid(this, "أضيف القص لأنهي سبورة؟", cards) { w ->
+            val id = if (w < ids.size) ids[w] else "board_" + System.currentTimeMillis()
+            val target = Store.load(this, id, true)
+            if (target.pageCount < 1) target.pageCount = 1
+            val hN = 0.5f / aspect / 1.414f
+            target.objsOf(1).add(PageObj("image", 0.25f, 0.2f, 0.5f, hN, "", key))
+            Store.save(this, target)
+            Toast.makeText(this, "اتضافت الصورة للسبورة", Toast.LENGTH_SHORT).show()
+        }
     }
 
     protected fun closeWithPrompt() {
