@@ -74,12 +74,12 @@ class BoardActivity : BaseInkActivity() {
 
     // التسطير: ساده أو سطور أو مربعات أو نقط، وبعدين الحجم
     private fun pickPattern() {
-        val names = arrayOf("ساده", "سطور", "مربعات", "نقط")
-        val cards = (0..3).map { k -> Pickers.patternPreview(this, k, 1) to names[k] }
+        val kinds = listOf("ساده", "سطور", "مربعات", "نقط")
+        val cards = kinds.mapIndexed { k, name -> Pickers.patternPreview(this, k, 1) to name }
         Pickers.grid(this, "نوع التسطير", cards) { k ->
-            val lvNames = arrayOf("صغير", "وسط", "كبير")
-            val lv = (0..2).map { l -> Pickers.patternPreview(this, k, l) to lvNames[l] }
-            Pickers.grid(this, "حجم التسطير", lv) { l ->
+            val levels = listOf("صغير", "وسط", "كبير")
+            val lc = levels.mapIndexed { l, name -> Pickers.patternPreview(this, k, l) to name }
+            Pickers.grid(this, "حجم التسطير", lc) { l ->
                 getSharedPreferences("board", MODE_PRIVATE).edit()
                     .putInt("pat_" + doc.id, k)
                     .putInt("lvl_" + doc.id, l)
@@ -169,8 +169,6 @@ class BoardActivity : BaseInkActivity() {
             return
         }
         val cards = users.map { Pickers.imagePreview(this, it) to SciLibrary.title(it) }
-        Pickers.grid(this, "اختار الصورة اللي تتحذف", cards) { w ->
-            SciLibrary.delete(this, users[w])
-        }
+        Pickers.grid(this, "اختار الصورة اللي تتحذف", cards) { w -> SciLibrary.delete(this, users[w]) }
     }
 }

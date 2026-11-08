@@ -61,6 +61,8 @@ abstract class BaseInkActivity : Activity() {
     private var tabScroll: HorizontalScrollView? = null
     private lateinit var handBtn: FrameLayout
     private lateinit var selectBtn: FrameLayout
+    private var sideSelectBtn: FrameLayout? = null
+    private var sideHandBtn: FrameLayout? = null
     private var sizeProgress = 35
 
     abstract fun pageTotal(): Int
@@ -284,8 +286,10 @@ abstract class BaseInkActivity : Activity() {
         col.addView(hSep())
         col.addView(sizeTile())
         col.addView(hSep())
-        col.addView(ibtn("select", ICON) { toggleSelect() })
-        col.addView(ibtn("hand", ICON) { toggleHand() })
+        sideSelectBtn = ibtn("select", ICON) { toggleSelect() }
+        col.addView(sideSelectBtn)
+        sideHandBtn = ibtn("hand", ICON) { toggleHand() }
+        col.addView(sideHandBtn)
         col.addView(ibtn("note", ICON) { addNote() })
         col.addView(ibtn("mind", ICON) { addMind() })
         col.addView(ibtn("trash", ICON) { confirmClear() })
@@ -696,6 +700,8 @@ abstract class BaseInkActivity : Activity() {
         eraseBtn.alpha = if (view.eraserMode) 1f else 0.5f
         handBtn.alpha = if (view.handMode) 1f else 0.5f
         selectBtn.alpha = if (view.selectMode) 1f else 0.5f
+        sideSelectBtn?.alpha = if (view.selectMode) 1f else 0.5f
+        sideHandBtn?.alpha = if (view.handMode) 1f else 0.5f
         colorDot?.background = oval(view.ink)
         colorTiles.forEach { t -> t.background = if (t.tag == view.ink) ring() else null }
         val d = (4 + sizeProgress * 0.36f).toInt()
@@ -811,16 +817,15 @@ abstract class BaseInkActivity : Activity() {
     private fun exportDir(): File = (getExternalFilesDir("exports") ?: filesDir).apply { mkdirs() }
 
     private fun exportMenu() {
-        val items = arrayOf("ملف PDF", "صورة PNG للصفحة", "سكرين شوت للشاشة")
-        AlertDialog.Builder(this)
-            .setItems(items) { _, which ->
-                when (which) {
-                    0 -> exportPdf()
-                    1 -> exportPng()
-                    2 -> exportScreenshot()
-                }
+        val opts = listOf("pdf" to "ملف PDF", "download" to "صورة PNG للصفحة", "select" to "سكرين شوت للشاشة")
+        Pickers.choose(this, "تصدير", opts, ICON) { w ->
+            when (w) {
+                0 -> exportPdf()
+                1 -> exportPng()
+                2 -> exportScreenshot()
+                else -> Unit
             }
-            .show()
+        }
     }
 
     private fun exportPng() {
@@ -967,28 +972,29 @@ abstract class BaseInkActivity : Activity() {
     // قايمة الضغط المطوّل على العنصر
     private fun showObjectMenu(i: Int) {
         val o = view.objects.getOrNull(i) ?: return
-        val cards = ArrayList<Pair<View, String>>()
-        val actions = ArrayList<() -> Unit>()
-        if (o.kind == "note") {
-            cards.add(Pickers.iconPreview(this, "note", ICON) to "تعديل النص")
-            actions.add { editNoteText(i) }
-        }
+        val opts = ArrayList<Pair<String, String>>()
+        if (o.kind == "note") opts.add("note" to "تعديل النص")
         if (o.kind == "mind") {
-            cards.add(Pickers.iconPreview(this, "mind", ICON) to "تعديل فرع")
-            actions.add { pickNode(i) { idx -> renameNode(i, idx) } }
-            cards.add(Pickers.iconPreview(this, "plus", ICON) to "إضافة فرع")
-            actions.add { pickNode(i) { idx -> addChild(i, idx) } }
+            opts.add("mind" to "تعديل فرع")
+            opts.add("mind" to "إضافة فرع")
         }
-        cards.add(Pickers.iconPreview(this, "trash", ICON) to "حذف")
-        actions.add { deleteObject(i) }
-        Pickers.grid(this, "اختار", cards) { w -> actions[w]() }
+        opts.add("trash" to "حذف")
+        Pickers.choose(this, "العنصر", opts, ICON) { w ->
+            when (opts[w].second) {
+                "تعديل النص" -> editNoteText(i)
+                "تعديل فرع" -> pickNode(i) { idx -> renameNode(i, idx) }
+                "إضافة فرع" -> pickNode(i) { idx -> addChild(i, idx) }
+                "حذف" -> deleteObject(i)
+                else -> Unit
+            }
+        }
     }
 
     private fun pickNode(i: Int, onPick: (Int) -> Unit) {
         val nodes = MindMap.decode(view.objects[i].text)
         if (nodes.isEmpty()) return
-        val cards = nodes.map { n -> Pickers.iconPreview(this, "mind", ICON) to (if (n.text.isBlank()) "…" else n.text) }
-        Pickers.grid(this, "اختار الفرع", cards) { w -> onPick(w) }
+        val opts = nodes.map { "mind" to it.text.ifBlank { "…" } }
+        Pickers.choose(this, "اختار الفرع", opts, ICON) { w -> onPick(w) }
     }
 
     private fun renameNode(i: Int, idx: Int) {
@@ -1056,13 +1062,14 @@ abstract class BaseInkActivity : Activity() {
     // نختار السبورة اللي هتتحط فيها الصورة المقصوصة
     private fun pickBoardForCrop(key: String, aspect: Float) {
         val ids = Store.listBoards(this)
-        val cards = ArrayList<Pair<View, String>>()
-        ids.forEach { cards.add(Pickers.iconPreview(this, "board", ICON) to Names.board(this, it, "سبورة")) }
-        cards.add(Pickers.iconPreview(this, "plus", ICON) to "سبورة جديدة")
-        Pickers.grid(this, "أضيف القص لأنهي سبورة؟", cards) { w ->
+        val opts = ArrayList<Pair<String, String>>()
+        ids.forEach { opts.add("board" to Names.board(this, it, "سبورة")) }
+        opts.add("plus" to "سبورة جديدة")
+        Pickers.choose(this, "أضيف القص لأنهي سبورة؟", opts, ICON) { w ->
             val id = if (w < ids.size) ids[w] else "board_" + System.currentTimeMillis()
             val target = Store.load(this, id, true)
             if (target.pageCount < 1) target.pageCount = 1
+            // الطول بيتحسب من نسبة الصورة (الصفحة تقريباً A4)
             val hN = 0.5f / aspect / 1.414f
             target.objsOf(1).add(PageObj("image", 0.25f, 0.2f, 0.5f, hN, "", key))
             Store.save(this, target)

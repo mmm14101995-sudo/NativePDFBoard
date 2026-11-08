@@ -70,6 +70,11 @@ object Pickers {
         dlg.show()
     }
 
+    // قايمة اختيار بصرية: كل اختيار له أيقونة ملونة واسم
+    fun choose(act: Activity, title: String, options: List<Pair<String, String>>, tint: Int, onPick: (Int) -> Unit) {
+        grid(act, title, options.map { (icon, label) -> iconPreview(act, icon, tint) to label }, onPick)
+    }
+
     // معاينة لأيقونة في كارت
     fun iconPreview(ctx: Context, icon: String, tint: Int): View = FrameLayout(ctx).apply {
         background = GradientDrawable().apply {

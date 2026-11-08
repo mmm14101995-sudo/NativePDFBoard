@@ -571,11 +571,9 @@ class MainActivity : Activity() {
     // ---------- الأفعال ----------
 
     private fun itemMenu(title: String, onRename: () -> Unit, onDelete: () -> Unit) {
-        AlertDialog.Builder(this)
-            .setTitle(title)
-            .setItems(arrayOf("إعادة تسمية", "حذف")) { _, w -> if (w == 0) onRename() else onDelete() }
-            .setNegativeButton("إلغاء", null)
-            .show()
+        Pickers.choose(this, title, listOf("note" to "إعادة تسمية", "trash" to "حذف"), INK) { w ->
+            if (w == 0) onRename() else onDelete()
+        }
     }
 
     private fun renameDialog(current: String, onSave: (String) -> Unit) {
@@ -606,16 +604,19 @@ class MainActivity : Activity() {
     private fun chooseLibraryForBook() {
         if (Library.all(this).isEmpty()) Library.create(this, "مكتبتي")
         val libs = Library.all(this)
-        val names = libs.map { "${it.name}  (${it.books.size}/${Library.MAX_BOOKS})" }.toTypedArray()
-        AlertDialog.Builder(this)
-            .setTitle("اختار المكتبة")
-            .setItems(names) { _, w ->
-                startActivity(Intent(this, ShelfActivity::class.java)
-                    .putExtra("idx", libs[w].idx)
-                    .putExtra("pick", true))
+        val cards = libs.map { lib ->
+            val preview: View = if (lib.books.isNotEmpty()) {
+                coverView(this, lib.books[0], 110, 140)
+            } else {
+                Pickers.iconPreview(this, "library", NAVY_B)
             }
-            .setNegativeButton("إلغاء", null)
-            .show()
+            preview to "${lib.name}  (${lib.books.size}/${Library.MAX_BOOKS})"
+        }
+        Pickers.grid(this, "اختار المكتبة", cards) { w ->
+            startActivity(Intent(this, ShelfActivity::class.java)
+                .putExtra("idx", libs[w].idx)
+                .putExtra("pick", true))
+        }
     }
 
     private fun newBoard() {
