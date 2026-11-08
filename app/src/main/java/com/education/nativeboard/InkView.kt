@@ -28,6 +28,8 @@ class InkView(ctx: Context) : View(ctx) {
     var ink: Int = Color.BLACK
     var sizeLevel = 6f
     var eraserMode = false
+    // نصف قطر الممحاة (نسبة من الصفحة) مستقل عن سُمك القلم
+    var eraserRadius = 0.025f
     var fingerDraws = true
     var handMode = false
     var pattern = 0
@@ -39,6 +41,9 @@ class InkView(ctx: Context) : View(ctx) {
     var selectMode = false
     var cropMode = false
     var selected = -1
+    // الكتابة المحددة (الخط نفسه) وإجراء الضغط المطوّل عليها
+    var selStroke = -1
+    var onStrokeLongPress: (() -> Unit)? = null
     var onObjectsChanged: (() -> Unit)? = null
     var onObjectLongPress: ((Int) -> Unit)? = null
     var onCropDone: ((Float, Float, Float, Float) -> Unit)? = null
@@ -191,6 +196,37 @@ class InkView(ctx: Context) : View(ctx) {
         c.drawPath(path, paint)
     }
 
+    // أقرب كتابة لنقطة اللمس (بالمسافة على الشاشة)
+    private fun hitStroke(nx: Float, ny: Float): Int {
+        val w = pageRect.width()
+        val h = pageRect.height()
+        if (w <= 0f || h <= 0f) return -1
+        val tol = 22f / zoom
+        val px = nx * w
+        val py = ny * h
+        for (i in strokes.indices.reversed()) {
+            val pts = strokes[i].pts
+            var k = 0
+            while (k + 1 < pts.size) {
+                val dx = pts[k] * w - px
+                val dy = pts[k + 1] * h - py
+                if (dx * dx + dy * dy <= tol * tol) return i
+                k += 2
+            }
+        }
+        return -1
+    }
+
+    // حذف الكتابة المحددة (بيتسجّل في التراجع)
+    fun deleteSelectedStroke() {
+        if (selStroke !in strokes.indices) return
+        onBeforeChange?.invoke()
+        strokes.removeAt(selStroke)
+        selStroke = -1
+        invalidate()
+        onChanged?.invoke()
+    }
+
     // ---------- العناصر فوق الصفحة ----------
 
     private fun objRect(o: PageObj): RectF = RectF(
@@ -209,6 +245,7 @@ class InkView(ctx: Context) : View(ctx) {
                 "image" -> drawImageObj(c, o, r)
                 "note" -> drawNoteObj(c, o, r)
                 "mind" -> drawMindObj(c, o, r)
+                "shape" -> drawShapeObj(c, o, r)
             }
             if (i == selected) {
                 paint.reset()
@@ -221,6 +258,32 @@ class InkView(ctx: Context) : View(ctx) {
                 paint.style = Paint.Style.FILL
                 c.drawCircle(r.right, r.bottom, 9f / zoom, paint)
             }
+        }
+        if (selStroke in strokes.indices && strokes[selStroke].pts.size >= 2) {
+            val pts = strokes[selStroke].pts
+            var minX = 1f
+            var minY = 1f
+            var maxX = 0f
+            var maxY = 0f
+            var k = 0
+            while (k + 1 < pts.size) {
+                minX = minOf(minX, pts[k])
+                maxX = maxOf(maxX, pts[k])
+                minY = minOf(minY, pts[k + 1])
+                maxY = maxOf(maxY, pts[k + 1])
+                k += 2
+            }
+            val box = RectF(
+                pageRect.left + minX * pageRect.width(), pageRect.top + minY * pageRect.height(),
+                pageRect.left + maxX * pageRect.width(), pageRect.top + maxY * pageRect.height()
+            )
+            paint.reset()
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = 2f / zoom
+            paint.color = 0xFF2563EB.toInt()
+            paint.pathEffect = DashPathEffect(floatArrayOf(8f / zoom, 6f / zoom), 0f)
+            c.drawRect(box, paint)
+            paint.pathEffect = null
         }
         if (cropping) {
             val r = RectF(
@@ -250,7 +313,8 @@ class InkView(ctx: Context) : View(ctx) {
         paint.reset()
         paint.style = Paint.Style.FILL
         paint.color = 0xFFFEF08A.toInt()
-        c.drawRoundRect(r, pw * 0.01f, pw * 0.01f, paint)
+        val nt = o.key.toIntOrNull()
+        if (nt != null) c.drawPath(Shapes.path(nt, r), paint) else c.drawRoundRect(r, pw * 0.01f, pw * 0.01f, paint)
         val pad = pw * 0.012f
         val tp = TextPaint(Paint.ANTI_ALIAS_FLAG)
         tp.color = 0xFF1E293B.toInt()
@@ -262,6 +326,24 @@ class InkView(ctx: Context) : View(ctx) {
         c.clipRect(0f, 0f, wrap.toFloat(), r.height() - 2 * pad)
         layout.draw(c)
         c.restore()
+    }
+
+    // الشكل الهندسي: key = "نوع:لون"
+    private fun drawShapeObj(c: Canvas, o: PageObj, r: RectF) {
+        val parts = o.key.split(":")
+        val type = parts.getOrNull(0)?.toIntOrNull() ?: 0
+        val col = parts.getOrNull(1)?.toIntOrNull() ?: 0xFF2563EB.toInt()
+        val path = Shapes.path(type, r)
+        paint.reset()
+        paint.isAntiAlias = true
+        paint.style = Paint.Style.FILL
+        paint.color = (col and 0x00FFFFFF) or 0x33000000
+        c.drawPath(path, paint)
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = pageRect.width() * 0.004f
+        paint.strokeJoin = Paint.Join.ROUND
+        paint.color = col
+        c.drawPath(path, paint)
     }
 
     private fun drawMindObj(c: Canvas, o: PageObj, r: RectF) {
@@ -325,6 +407,7 @@ class InkView(ctx: Context) : View(ctx) {
                     invalidate()
                     return true
                 }
+                selStroke = -1
                 val sel = objects.getOrNull(selected)
                 if (sel != null && Math.abs(nx - (sel.x + sel.w)) < tol && Math.abs(ny - (sel.y + sel.h)) < tol) {
                     objDrag = 2
@@ -337,7 +420,18 @@ class InkView(ctx: Context) : View(ctx) {
                             break
                         }
                     }
-                    objDrag = if (selected >= 0) 1 else 3
+                    if (selected >= 0) {
+                        objDrag = 1
+                    } else {
+                        val si = hitStroke(nx, ny)
+                        if (si >= 0) {
+                            selStroke = si
+                            objDrag = 4
+                            onBeforeChange?.invoke()
+                        } else {
+                            objDrag = 3
+                        }
+                    }
                 }
                 invalidate()
                 return true
@@ -361,6 +455,18 @@ class InkView(ctx: Context) : View(ctx) {
                         o.h = (o.h + ny - objLastY).coerceAtLeast(0.04f)
                         objMoved = true
                     }
+                    4 -> {
+                        val st = strokes.getOrNull(selStroke)
+                        if (st != null) {
+                            var k = 0
+                            while (k + 1 < st.pts.size) {
+                                st.pts[k] = st.pts[k] + (nx - objLastX)
+                                st.pts[k + 1] = st.pts[k + 1] + (ny - objLastY)
+                                k += 2
+                            }
+                            objMoved = true
+                        }
+                    }
                     3 -> {
                         panX += e.x - objSX
                         panY += e.y - objSY
@@ -383,11 +489,15 @@ class InkView(ctx: Context) : View(ctx) {
                     val w = Math.abs(cropX1 - cropX0)
                     val h = Math.abs(cropY1 - cropY0)
                     if (w > 0.01f && h > 0.01f) onCropDone?.invoke(x, y, w, h)
-                } else if (objDrag == 1 || objDrag == 2) {
+                } else if (objDrag == 1 || objDrag == 2 || objDrag == 4) {
                     if (objMoved) {
                         onObjectsChanged?.invoke()
-                    } else if (System.currentTimeMillis() - objDownAt > 450 && selected >= 0) {
-                        onObjectLongPress?.invoke(selected)
+                    } else if (System.currentTimeMillis() - objDownAt > 450) {
+                        if (objDrag == 4) {
+                            if (selStroke >= 0) onStrokeLongPress?.invoke()
+                        } else if (selected >= 0) {
+                            onObjectLongPress?.invoke(selected)
+                        }
                     }
                 }
                 objDrag = 0
@@ -513,7 +623,7 @@ class InkView(ctx: Context) : View(ctx) {
     // الممحاة: بتمسح جزء من الخط اللي بتلمسه وتقسّمه، والباقي بيفضل
     private fun eraseAt(x: Float, y: Float) {
         val n = toNorm(x, y)
-        val r = 0.012f + sizeLevel * 0.003f
+        val r = eraserRadius
         val ratio = if (pageRect.width() > 0f) pageRect.height() / pageRect.width() else 1.414f
         fun near(ax: Float, ay: Float): Boolean {
             val dx = ax - n[0]

@@ -134,9 +134,37 @@ abstract class BaseInkActivity : Activity() {
 
     // زرار أيقونة (40 دب) بيقبل أي لون
     private fun ibtn(icon: String, tint: Int, onClick: () -> Unit): FrameLayout = FrameLayout(this).apply {
+        background = glassTile()
         layoutParams = LinearLayout.LayoutParams(dp(40), dp(40))
         setOnClickListener { onClick() }
         addView(IconView(this@BaseInkActivity, icon, tint), FrameLayout.LayoutParams(dp(22), dp(22), Gravity.CENTER))
+    }
+
+    // زجاج لامع للأزرار: تدرج أبيض وحافة مضيئة
+    private fun glassTile(): GradientDrawable = GradientDrawable(
+        GradientDrawable.Orientation.TOP_BOTTOM,
+        intArrayOf(0x88FFFFFF.toInt(), 0x22FFFFFF)
+    ).apply {
+        cornerRadius = dp(14).toFloat()
+        setStroke(dp(1), 0x44000000)
+    }
+
+    private fun addShape() {
+        val opts = (0 until Shapes.COUNT).map { t -> Pickers.shapePreview(this, t) to Shapes.NAMES[t] }
+        Pickers.grid(this, "الأشكال الهندسية", opts) { t ->
+            view.objects.add(PageObj("shape", 0.3f, 0.3f, 0.3f, 0.3f, "", "$t:${view.ink}"))
+            view.selected = view.objects.size - 1
+            view.selectMode = true
+            dirty = true
+            view.invalidate()
+            refreshBar()
+        }
+    }
+
+    private fun showStrokeMenu() {
+        Pickers.choose(this, "الكتابة المحددة", listOf("trash" to "حذف الكتابة"), ICON) { _ ->
+            view.deleteSelectedStroke()
+        }
     }
 
     // كلام صغير تحت الأيقونة (في الوضع العادي بس)
@@ -190,6 +218,7 @@ abstract class BaseInkActivity : Activity() {
                     refreshBar()
                 }
                 onObjectLongPress = { i -> showObjectMenu(i) }
+                onStrokeLongPress = { showStrokeMenu() }
                 onCropDone = { x, y, w, h -> onCropped(x, y, w, h) }
                 onBeforeChange = {
                     undo.add(snapshot())
@@ -292,6 +321,7 @@ abstract class BaseInkActivity : Activity() {
         col.addView(sideHandBtn)
         col.addView(ibtn("note", ICON) { addNote() })
         col.addView(ibtn("mind", ICON) { addMind() })
+        col.addView(ibtn("shape", ICON) { addShape() })
         col.addView(ibtn("trash", ICON) { confirmClear() })
         col.addView(hSep())
         col.addView(presetTile(6, 10))
@@ -403,6 +433,7 @@ abstract class BaseInkActivity : Activity() {
         row.addView(labeled(selectBtn, "تحديد"))
         row.addView(labeled(ibtn("note", tint) { addNote() }, "ملاحظة"))
         row.addView(labeled(ibtn("mind", tint) { addMind() }, "خريطة"))
+        row.addView(labeled(ibtn("shape", tint) { addShape() }, "أشكال"))
     }
 
     private fun addNav(row: LinearLayout) {
@@ -610,6 +641,7 @@ abstract class BaseInkActivity : Activity() {
         view.strokes = doc.strokesOf(n)
         view.objects = doc.objsOf(n)
         view.selected = -1
+        view.selStroke = -1
         showPageBitmap(n)
         onPageShown(n)
         view.invalidate()
@@ -920,8 +952,13 @@ abstract class BaseInkActivity : Activity() {
     }
 
     private fun addNote() {
+        val opts = Shapes.NOTE_SHAPES.map { t -> Pickers.shapePreview(this, t) to Shapes.NAMES[t] }
+        Pickers.grid(this, "شكل الملاحظة", opts) { k -> createNote(Shapes.NOTE_SHAPES[k]) }
+    }
+
+    private fun createNote(type: Int) {
         val list = view.objects
-        list.add(PageObj("note", 0.36f, 0.36f, 0.24f, 0.18f, "اكتب هنا"))
+        list.add(PageObj("note", 0.36f, 0.36f, 0.24f, 0.18f, "اكتب هنا", type.toString()))
         view.selected = list.size - 1
         view.selectMode = false
         dirty = true
@@ -957,8 +994,8 @@ abstract class BaseInkActivity : Activity() {
     }
 
     private fun addMind() {
-        val names = arrayOf("دايرية", "شجرة", "فقاعات")
-        val cards = (0..2).map { k -> Pickers.mindPreview(this, MindMap.template(k)) to names[k] }
+        val names = listOf("دايرية 5", "دايرية 8", "شجرة", "أفقية", "4 فقاعات", "6 فقاعات", "سلسلة", "هرمية")
+        val cards = names.indices.map { k -> Pickers.mindPreview(this, MindMap.template(k)) to names[k] }
         Pickers.grid(this, "اختار شكل الخريطة", cards) { k ->
             view.objects.add(PageObj("mind", 0.25f, 0.3f, 0.5f, 0.42f, MindMap.encode(MindMap.template(k))))
             view.selected = view.objects.size - 1

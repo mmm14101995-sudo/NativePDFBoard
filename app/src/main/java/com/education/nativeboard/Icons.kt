@@ -1,7 +1,11 @@
 package com.education.nativeboard
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.LinearGradient
+import android.graphics.Shader
 import android.graphics.DashPathEffect
 import android.graphics.Paint
 import android.graphics.Path
@@ -15,21 +19,76 @@ class IconView(ctx: Context, private val name: String, private val tint: Int) : 
         strokeCap = Paint.Cap.ROUND
         strokeJoin = Paint.Join.ROUND
     }
+    // الأيقونة بتترسم مرة واحدة وتتخزن كصورة، فالأداء ما بيتأثرش
+    private var cache: Bitmap? = null
 
     override fun onDraw(c: Canvas) {
         if (width <= 0 || height <= 0) return
+        val cur = cache
+        val bmp = if (cur != null && cur.width == width && cur.height == height) cur else render3d()
+        cache = bmp
+        c.drawBitmap(bmp, 0f, 0f, null)
+    }
+
+    private fun mix(col: Int, k: Float): Int = Color.argb(
+        Color.alpha(col),
+        (Color.red(col) * k).toInt().coerceIn(0, 255),
+        (Color.green(col) * k).toInt().coerceIn(0, 255),
+        (Color.blue(col) * k).toInt().coerceIn(0, 255)
+    )
+
+    // ثلاثي الأبعاد: ظل تحت + تدرج لوني من الفاتح لفوق للغامق لتحت
+    private fun render3d(): Bitmap {
+        val bmp = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val c = Canvas(bmp)
         val s = minOf(width, height) / 24f
-        c.save()
         c.translate((width - 24f * s) / 2f, (height - 24f * s) / 2f)
         c.scale(s, s)
-        p.color = tint
+        if (name == "eraser") {
+            Icons.eraser3d(c)
+            return bmp
+        }
         p.strokeWidth = 2f
+        p.shader = null
+        p.color = 0x55000000
+        c.translate(0f, 1.1f)
         Icons.draw(c, name, p)
-        c.restore()
+        c.translate(0f, -1.1f)
+        p.shader = LinearGradient(0f, 3f, 0f, 21f, intArrayOf(mix(tint, 1.35f), tint, mix(tint, 0.65f)), null, Shader.TileMode.CLAMP)
+        Icons.draw(c, name, p)
+        p.shader = null
+        return bmp
     }
 }
 
 object Icons {
+    // ممحاة ثلاثية الأبعاد: جسم بتدرج لوني وظل ولمعة
+    fun eraser3d(c: Canvas) {
+        val body = Path()
+        body.moveTo(3f, 15f)
+        body.lineTo(10.5f, 6.5f)
+        body.lineTo(20.5f, 16f)
+        body.lineTo(13f, 21f)
+        body.close()
+        val p = Paint(Paint.ANTI_ALIAS_FLAG)
+        p.color = 0x33000000
+        c.drawOval(RectF(4f, 19.5f, 19f, 22f), p)
+        p.shader = LinearGradient(
+            3f, 6f, 20f, 21f,
+            intArrayOf(0xFFFFE4E6.toInt(), 0xFFFB7185.toInt(), 0xFFBE123C.toInt()),
+            null, Shader.TileMode.CLAMP
+        )
+        c.drawPath(body, p)
+        p.shader = null
+        p.style = Paint.Style.STROKE
+        p.strokeWidth = 1.2f
+        p.color = 0xCCFFFFFF.toInt()
+        c.drawLine(10.5f, 7.5f, 18.5f, 15.5f, p)
+        p.strokeWidth = 0.8f
+        p.color = 0x66000000
+        c.drawPath(body, p)
+    }
+
     fun draw(c: Canvas, name: String, p: Paint) {
         val path = Path()
         when (name) {
@@ -110,6 +169,10 @@ object Icons {
                 path.moveTo(3f, 5f); path.lineTo(9f, 5f); path.quadTo(11f, 5f, 12f, 7f)
                 path.quadTo(13f, 5f, 15f, 5f); path.lineTo(21f, 5f); path.lineTo(21f, 19f); path.lineTo(15f, 19f)
                 path.quadTo(13f, 19f, 12f, 20f); path.quadTo(11f, 19f, 9f, 19f); path.lineTo(3f, 19f); path.close()
+            }
+            "shape" -> {
+                path.moveTo(4f, 20f); path.lineTo(11f, 20f); path.lineTo(11f, 13f); path.lineTo(4f, 13f); path.close()
+                path.moveTo(15f, 4f); path.lineTo(21f, 14f); path.lineTo(9f, 14f); path.close()
             }
             "home" -> {
                 path.moveTo(4f, 11f); path.lineTo(12f, 4f); path.lineTo(20f, 11f)
