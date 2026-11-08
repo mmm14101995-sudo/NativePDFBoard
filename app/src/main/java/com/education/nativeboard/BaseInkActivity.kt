@@ -2,7 +2,10 @@ package com.education.nativeboard
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.pdf.PdfDocument
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.view.Gravity
@@ -13,8 +16,10 @@ import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
+import java.io.File
 
 // التصميم حسب الصورة (وضع عادي):
 // فوق: شريط كحلي متدرج (أيقونة، اسم الملف، تراجع، إعادة، ملء الشاشة، إغلاق)
@@ -49,6 +54,8 @@ abstract class BaseInkActivity : Activity() {
     private lateinit var redoBtn: FrameLayout
     private lateinit var eraseBtn: FrameLayout
     private lateinit var sizeDot: View
+    private lateinit var handBtn: FrameLayout
+    private var sizeProgress = 35
 
     abstract fun pageTotal(): Int
     abstract fun showPageBitmap(n: Int)
@@ -249,7 +256,7 @@ abstract class BaseInkActivity : Activity() {
             colorTiles.add(t)
             col.addView(t)
         }
-        col.addView(rainbowTile { openInkPalette() })
+        col.addView(rainbowTile { openCustomColor() })
         col.addView(hSep())
         col.addView(sizeTile())
         return col
@@ -268,6 +275,7 @@ abstract class BaseInkActivity : Activity() {
         row.addView(sep(false))
         addEraseClear(row, ICON)
         row.addView(sep(false))
+        row.addView(labeled(ibtn("export", ICON) { exportMenu() }, "تصدير"))
         extraButtons(row)
         val scroll = HorizontalScrollView(this)
         scroll.isHorizontalScrollBarEnabled = false
@@ -300,6 +308,7 @@ abstract class BaseInkActivity : Activity() {
         addNav(row)
         row.addView(sep(v))
         extraButtons(row)
+        row.addView(ibtn("export", ICON) { exportMenu() })
         row.addView(ibtn("orient", ICON) { toggleOrient() })
         row.addView(ibtn("shrink", ICON) { toggleFull() })
 
@@ -350,6 +359,8 @@ abstract class BaseInkActivity : Activity() {
         eraseBtn = ibtn("eraser", tint) { toggleEraser() }
         row.addView(labeled(eraseBtn, "ممحاة"))
         row.addView(labeled(ibtn("trash", tint) { confirmClear() }, "مسح"))
+        handBtn = ibtn("hand", tint) { toggleHand() }
+        row.addView(labeled(handBtn, "يد"))
     }
 
     private fun addNav(row: LinearLayout) {
@@ -391,7 +402,7 @@ abstract class BaseInkActivity : Activity() {
     // لون الحبر الحالي (في الشريط العايم)
     private fun currentColorTile(): FrameLayout = FrameLayout(this).apply {
         layoutParams = LinearLayout.LayoutParams(dp(40), dp(40))
-        setOnClickListener { openInkPalette() }
+        setOnClickListener { openCustomColor() }
         val dot = View(this@BaseInkActivity)
         colorDot = dot
         addView(dot, FrameLayout.LayoutParams(dp(22), dp(22), Gravity.CENTER))
@@ -399,7 +410,7 @@ abstract class BaseInkActivity : Activity() {
 
     private fun sizeTile(): FrameLayout = FrameLayout(this).apply {
         layoutParams = LinearLayout.LayoutParams(dp(40), dp(40))
-        setOnClickListener { cycleSize() }
+        setOnClickListener { openSizeDialog() }
         val dot = View(this@BaseInkActivity)
         sizeDot = dot
         addView(dot, FrameLayout.LayoutParams(dp(6), dp(6), Gravity.CENTER))
@@ -602,9 +613,10 @@ abstract class BaseInkActivity : Activity() {
         undoBtn.alpha = if (undo.isEmpty()) 0.35f else 1f
         redoBtn.alpha = if (redo.isEmpty()) 0.35f else 1f
         eraseBtn.alpha = if (view.eraserMode) 1f else 0.5f
+        handBtn.alpha = if (view.handMode) 1f else 0.5f
         colorDot?.background = oval(view.ink)
         colorTiles.forEach { t -> t.background = if (t.tag == view.ink) ring() else null }
-        val d = arrayOf(6, 10, 16)[sizeIdx]
+        val d = (4 + sizeProgress * 0.36f).toInt()
         sizeDot.layoutParams = FrameLayout.LayoutParams(dp(d), dp(d), Gravity.CENTER)
         sizeDot.background = oval(ICON)
         penSlots.forEachIndexed { i, s ->
@@ -613,6 +625,157 @@ abstract class BaseInkActivity : Activity() {
         penViews.forEachIndexed { i, pv ->
             pv.picked = !view.eraserMode && view.penIndex == slotPens[i]
         }
+    }
+
+    private fun toggleHand() {
+        view.handMode = !view.handMode
+        if (view.handMode) view.eraserMode = false
+        refreshBar()
+    }
+
+    // حجم القلم: شريط من رفيع (شمال) لتخين (يمين)، ودايرة فوق بتكبر وتصغر
+    private fun sizeLevelOf(p: Int): Float = 2f + p * 0.14f
+
+    private fun openSizeDialog() {
+        val box = LinearLayout(this)
+        box.orientation = LinearLayout.VERTICAL
+        box.gravity = Gravity.CENTER_HORIZONTAL
+        box.setPadding(dp(20), dp(12), dp(20), dp(8))
+        val stage = FrameLayout(this)
+        val preview = View(this)
+        preview.background = oval(ICON)
+        stage.addView(preview, FrameLayout.LayoutParams(dp(40), dp(40), Gravity.CENTER))
+        box.addView(stage, LinearLayout.LayoutParams(dp(120), dp(120)))
+        fun showSize(p: Int) {
+            val d = (4 + p * 0.36f).toInt()
+            preview.layoutParams = FrameLayout.LayoutParams(dp(d), dp(d), Gravity.CENTER)
+        }
+        showSize(sizeProgress)
+        val track = LinearLayout(this)
+        track.orientation = LinearLayout.HORIZONTAL
+        track.gravity = Gravity.CENTER_VERTICAL
+        val thin = View(this)
+        thin.background = oval(ICON)
+        track.addView(thin, LinearLayout.LayoutParams(dp(4), dp(4)))
+        val bar = SeekBar(this)
+        bar.max = 100
+        bar.progress = sizeProgress
+        bar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(sb: SeekBar?, p: Int, fromUser: Boolean) {
+                sizeProgress = p
+                view.sizeLevel = sizeLevelOf(p)
+                showSize(p)
+                refreshBar()
+            }
+            override fun onStartTrackingTouch(sb: SeekBar?) {}
+            override fun onStopTrackingTouch(sb: SeekBar?) {}
+        })
+        track.addView(bar, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        val thick = View(this)
+        thick.background = oval(ICON)
+        track.addView(thick, LinearLayout.LayoutParams(dp(16), dp(16)))
+        box.addView(track, LinearLayout.LayoutParams(dp(280), ViewGroup.LayoutParams.WRAP_CONTENT))
+        AlertDialog.Builder(this).setView(box).setPositiveButton("تم", null).show()
+    }
+
+    // ألوان مخصصة: RGB بسلايدرز ومعاينة
+    private fun openCustomColor() {
+        val box = LinearLayout(this)
+        box.orientation = LinearLayout.VERTICAL
+        box.gravity = Gravity.CENTER_HORIZONTAL
+        box.setPadding(dp(20), dp(12), dp(20), dp(8))
+        val prev = View(this)
+        box.addView(prev, LinearLayout.LayoutParams(dp(72), dp(72)).apply {
+            gravity = Gravity.CENTER_HORIZONTAL
+            setMargins(0, 0, 0, dp(12))
+        })
+        var r = Color.red(view.ink)
+        var g = Color.green(view.ink)
+        var b = Color.blue(view.ink)
+        fun update() {
+            prev.background = oval(Color.rgb(r, g, b))
+        }
+        update()
+        fun channel(init: Int, onChange: (Int) -> Unit) {
+            val s = SeekBar(this)
+            s.max = 255
+            s.progress = init
+            s.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(sb: SeekBar?, p: Int, fromUser: Boolean) {
+                    onChange(p)
+                    update()
+                }
+                override fun onStartTrackingTouch(sb: SeekBar?) {}
+                override fun onStopTrackingTouch(sb: SeekBar?) {}
+            })
+            box.addView(s, LinearLayout.LayoutParams(dp(280), ViewGroup.LayoutParams.WRAP_CONTENT))
+        }
+        channel(r) { r = it }
+        channel(g) { g = it }
+        channel(b) { b = it }
+        AlertDialog.Builder(this)
+            .setView(box)
+            .setPositiveButton("تم") { _, _ -> setInk(Color.rgb(r, g, b)) }
+            .setNegativeButton("إلغاء", null)
+            .show()
+    }
+
+    // ---------- التصدير ----------
+
+    private fun exportDir(): File = (getExternalFilesDir("exports") ?: filesDir).apply { mkdirs() }
+
+    private fun exportMenu() {
+        val items = arrayOf("ملف PDF", "صورة PNG للصفحة", "سكرين شوت للشاشة")
+        AlertDialog.Builder(this)
+            .setItems(items) { _, which ->
+                when (which) {
+                    0 -> exportPdf()
+                    1 -> exportPng()
+                    2 -> exportScreenshot()
+                }
+            }
+            .show()
+    }
+
+    private fun exportPng() {
+        val bmp = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+        view.drawForExport(Canvas(bmp))
+        savePng(bmp, "page")
+    }
+
+    private fun exportScreenshot() {
+        val d = window.decorView
+        val bmp = Bitmap.createBitmap(d.width, d.height, Bitmap.Config.ARGB_8888)
+        d.draw(Canvas(bmp))
+        savePng(bmp, "screen")
+    }
+
+    private fun savePng(bmp: Bitmap, tag: String) {
+        val f = File(exportDir(), "${tag}_${System.currentTimeMillis()}.png")
+        f.outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 95, it) }
+        Toast.makeText(this, "اتحفظ في: ${f.path}", Toast.LENGTH_LONG).show()
+    }
+
+    // PDF: كل صفحات الكتاب/السبورة بكتابتها
+    private fun exportPdf() {
+        val origPage = pageNo
+        val pdf = PdfDocument()
+        val w = view.width
+        val h = view.height
+        for (n in 1..pageTotal()) {
+            view.strokes = doc.strokesOf(n)
+            showPageBitmap(n)
+            val page = pdf.startPage(PdfDocument.PageInfo.Builder(w, h, n).create())
+            view.drawForExport(page.canvas)
+            pdf.finishPage(page)
+        }
+        val f = File(exportDir(), "export_${System.currentTimeMillis()}.pdf")
+        f.outputStream().use { pdf.writeTo(it) }
+        pdf.close()
+        view.strokes = doc.strokesOf(origPage)
+        showPageBitmap(origPage)
+        refreshBar()
+        Toast.makeText(this, "اتحفظ في: ${f.path}", Toast.LENGTH_LONG).show()
     }
 
     protected fun closeWithPrompt() {

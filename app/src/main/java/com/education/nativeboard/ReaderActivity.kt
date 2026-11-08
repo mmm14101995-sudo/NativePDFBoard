@@ -33,6 +33,7 @@ class ReaderActivity : BaseInkActivity() {
             return
         }
         doc = Store.load(this, id, false)
+        getSharedPreferences("home", MODE_PRIVATE).edit().putString("last", id).putInt("type", 0).apply()
         pfd = ParcelFileDescriptor.open(Store.pdfFile(this, id), ParcelFileDescriptor.MODE_READ_ONLY)
         renderer = PdfRenderer(pfd!!)
         buildUi()

@@ -26,6 +26,10 @@ class InkView(ctx: Context) : View(ctx) {
     var sizeLevel = 6f
     var eraserMode = false
     var fingerDraws = true
+    var handMode = false
+    var pattern = 0
+    var patternLevel = 1
+    private var exportMode = false
 
     // نداءات للشاشة الأب: قبل أي تعديل (عشان التراجع)، وبعد أي تعديل (عشان الحفظ)
     var onBeforeChange: (() -> Unit)? = null
@@ -79,8 +83,12 @@ class InkView(ctx: Context) : View(ctx) {
     }
 
     override fun onDraw(c: Canvas) {
-        surface.shader = LinearGradient(0f, 0f, 0f, height.toFloat(), intArrayOf(0xFF1E2538.toInt(), 0xFF0B1020.toInt()), null, Shader.TileMode.CLAMP)
-        c.drawRect(0f, 0f, width.toFloat(), height.toFloat(), surface)
+        if (!exportMode) {
+            // خلفية السبورة بتملأ الشاشة كلها، والصفحة بتتصغر جواها مع الكتابة
+            paint.reset()
+            paint.color = bgColor
+            c.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
+        }
         computePageRect()
         c.save()
         c.translate(panX, panY)
@@ -89,6 +97,14 @@ class InkView(ctx: Context) : View(ctx) {
         paint.color = bgColor
         c.drawRect(pageRect, paint)
         pageBitmap?.let { c.drawBitmap(it, null, pageRect, null) }
+        drawPattern(c)
+        if (!exportMode) {
+            paint.reset()
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = 1.5f / zoom
+            paint.color = 0x40000000
+            c.drawRect(pageRect, paint)
+        }
         // لمعة زجاجية خفيفة على الصفحة
         paint.reset()
         paint.shader = LinearGradient(pageRect.left, pageRect.top, pageRect.left, pageRect.top + pageRect.height() * 0.35f, intArrayOf(0x1CFFFFFF, 0x00FFFFFF), null, Shader.TileMode.CLAMP)
@@ -136,7 +152,10 @@ class InkView(ctx: Context) : View(ctx) {
             drawBrush(c, st, w, pen)
             return
         }
-        if (pen.highlight) paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.MULTIPLY)
+        if (pen.highlight) {
+            paint.alpha = 255
+            paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.MULTIPLY)
+        }
         if (pen.grain) {
             // الرصاص: 3 خطوط رفيعة متجاورة بشفافية، فبيطلع شكل الجرافيت
             val base = paint.alpha
@@ -151,6 +170,64 @@ class InkView(ctx: Context) : View(ctx) {
             return
         }
         c.drawPath(path, paint)
+    }
+
+    // التسطير: بيغطي الشاشة كلها (مش الصفحة بس)، وبيكبر ويصغر مع الكتابة
+    private fun drawPattern(c: Canvas) {
+        if (pattern == 0 || pageBitmap != null || pageRect.width() <= 0f) return
+        val cells = intArrayOf(30, 18, 12)[patternLevel.coerceIn(0, 2)]
+        val s = pageRect.width() / cells
+        val vl = -panX / zoom
+        val vt = -panY / zoom
+        val vr = (width - panX) / zoom
+        val vb = (height - panY) / zoom
+        val x0 = pageRect.left + Math.floor(((vl - pageRect.left) / s).toDouble()).toFloat() * s
+        val y0 = pageRect.top + Math.floor(((vt - pageRect.top) / s).toDouble()).toFloat() * s
+        paint.reset()
+        paint.isAntiAlias = true
+        paint.color = 0x33334155
+        paint.strokeWidth = 1f / zoom
+        when (pattern) {
+            1 -> {
+                paint.style = Paint.Style.STROKE
+                var y = y0
+                while (y <= vb) { c.drawLine(vl, y, vr, y, paint); y += s }
+            }
+            2 -> {
+                paint.style = Paint.Style.STROKE
+                var y = y0
+                while (y <= vb) { c.drawLine(vl, y, vr, y, paint); y += s }
+                var x = x0
+                while (x <= vr) { c.drawLine(x, vt, x, vb, paint); x += s }
+            }
+            3 -> {
+                val count = ((vr - vl) / s) * ((vb - vt) / s)
+                if (count > 20000f) return
+                paint.style = Paint.Style.FILL
+                var y = y0
+                while (y <= vb) {
+                    var x = x0
+                    while (x <= vr) { c.drawCircle(x, y, 1.8f / zoom, paint); x += s }
+                    y += s
+                }
+            }
+        }
+    }
+
+    // رسم الصفحة كاملة بدون تكبير ولا خلفية الشاشة (للتصدير PDF وصورة)
+    fun drawForExport(c: Canvas) {
+        val z = zoom
+        val px = panX
+        val py = panY
+        zoom = 1f
+        panX = 0f
+        panY = 0f
+        exportMode = true
+        onDraw(c)
+        exportMode = false
+        zoom = z
+        panX = px
+        panY = py
     }
 
     // تحويل نقطة الشاشة لنسبة من الصفحة
@@ -392,7 +469,7 @@ class InkView(ctx: Context) : View(ctx) {
         val d = dist(a, b).coerceAtLeast(1f)
         val mx = (a.x + b.x) / 2f
         val my = (a.y + b.y) / 2f
-        zoom = (pinchZoom * d / pinchD).coerceIn(0.5f, 5f)
+        zoom = (pinchZoom * d / pinchD).coerceIn(0.3f, 5f)
         panX = mx - pinchPre.x * zoom
         panY = my - pinchPre.y * zoom
         clampPan()
@@ -413,7 +490,7 @@ class InkView(ctx: Context) : View(ctx) {
                 points[id] = PointF(e.getX(i), e.getY(i))
                 if (points.size >= 2) {
                     startPinch()
-                } else if (stylus || fingerDraws || e.getToolType(i) == MotionEvent.TOOL_TYPE_MOUSE) {
+                } else if (!handMode && (stylus || fingerDraws || e.getToolType(i) == MotionEvent.TOOL_TYPE_MOUSE)) {
                     beginStroke(id, e.getX(i), e.getY(i))
                 } else {
                     mode = 3

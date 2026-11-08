@@ -22,6 +22,7 @@ class BoardActivity : BaseInkActivity() {
             return
         }
         doc = Store.load(this, id, true)
+        getSharedPreferences("home", MODE_PRIVATE).edit().putString("last", id).putInt("type", 1).apply()
         if (doc.pageCount < 1) doc.pageCount = 1
         buildUi()
         view.post { goPage(1) }
@@ -29,6 +30,9 @@ class BoardActivity : BaseInkActivity() {
 
     override fun showPageBitmap(n: Int) {
         view.bgColor = if (doc.bg == -1) Color.WHITE else doc.bg
+        val pf = getSharedPreferences("board", MODE_PRIVATE)
+        view.pattern = pf.getInt("pat_" + doc.id, 0)
+        view.patternLevel = pf.getInt("lvl_" + doc.id, 1)
         val file = doc.images[n]
         view.pageBitmap = if (file == null) null else loadLibraryImage(file)
     }
@@ -38,6 +42,7 @@ class BoardActivity : BaseInkActivity() {
         row.addView(actionBtn("plus", "صفحة") { addPage() })
         row.addView(actionBtn("palette", "الخلفية") { pickBackground() })
         row.addView(actionBtn("library", "مكتبة") { pickFromLibrary() })
+        row.addView(actionBtn("lines", "تسطير") { pickPattern() })
     }
 
     // تحميل الصورة بدقة تناسب الشاشة (مش أصغر ومش أكبر من اللازم)
@@ -74,6 +79,27 @@ class BoardActivity : BaseInkActivity() {
             markDirty()
             view.invalidate()
         }
+    }
+
+    // التسطير: ساده أو سطور أو مربعات أو نقط، وبعدين الحجم
+    private fun pickPattern() {
+        val kinds = arrayOf("ساده", "سطور", "مربعات", "نقط")
+        AlertDialog.Builder(this)
+            .setItems(kinds) { _, k ->
+                val levels = arrayOf("صغير", "وسط", "كبير")
+                AlertDialog.Builder(this)
+                    .setItems(levels) { _, l ->
+                        getSharedPreferences("board", MODE_PRIVATE).edit()
+                            .putInt("pat_" + doc.id, k)
+                            .putInt("lvl_" + doc.id, l)
+                            .apply()
+                        view.pattern = k
+                        view.patternLevel = l
+                        view.invalidate()
+                    }
+                    .show()
+            }
+            .show()
     }
 
     private fun pickFromLibrary() {

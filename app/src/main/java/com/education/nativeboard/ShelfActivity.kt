@@ -67,6 +67,10 @@ class ShelfActivity : Activity() {
     override fun onResume() {
         super.onResume()
         render()
+        if (intent.getBooleanExtra("pick", false)) {
+            intent.removeExtra("pick")
+            pickBook()
+        }
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {

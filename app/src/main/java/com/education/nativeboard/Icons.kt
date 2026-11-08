@@ -53,6 +53,24 @@ object Icons {
                 path.moveTo(7f, 10f); path.lineTo(12f, 15f); path.lineTo(17f, 10f)
                 path.moveTo(5f, 19f); path.lineTo(19f, 19f)
             }
+            "hand" -> {
+                path.moveTo(7f, 13f); path.lineTo(7f, 6f)
+                path.moveTo(10f, 12f); path.lineTo(10f, 4f)
+                path.moveTo(13f, 12f); path.lineTo(13f, 4f)
+                path.moveTo(16f, 12f); path.lineTo(16f, 6f)
+                path.moveTo(7f, 13f); path.cubicTo(5f, 11f, 4f, 13f, 6f, 17f); path.lineTo(9f, 21f); path.lineTo(16f, 21f)
+                path.cubicTo(19f, 21f, 19f, 17f, 19f, 13f); path.lineTo(16f, 12f)
+            }
+            "lines" -> {
+                path.moveTo(4f, 6f); path.lineTo(20f, 6f)
+                path.moveTo(4f, 11f); path.lineTo(20f, 11f)
+                path.moveTo(4f, 16f); path.lineTo(20f, 16f)
+            }
+            "export" -> {
+                path.moveTo(12f, 15f); path.lineTo(12f, 4f)
+                path.moveTo(8f, 8f); path.lineTo(12f, 4f); path.lineTo(16f, 8f)
+                path.moveTo(5f, 12f); path.lineTo(5f, 19f); path.lineTo(19f, 19f); path.lineTo(19f, 12f)
+            }
             "expand" -> {
                 path.moveTo(4f, 9f); path.lineTo(4f, 4f); path.lineTo(9f, 4f)
                 path.moveTo(15f, 4f); path.lineTo(20f, 4f); path.lineTo(20f, 9f)
