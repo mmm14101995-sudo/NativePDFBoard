@@ -7,7 +7,6 @@ import android.graphics.Canvas
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.pdf.PdfDocument
-import android.content.res.ColorStateList
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
@@ -746,9 +745,6 @@ abstract class BaseInkActivity : Activity() {
         bar.progressTintList = ColorStateList.valueOf(Prefs.accentB(this))
         bar.progressBackgroundTintList = ColorStateList.valueOf(0x40808080)
         bar.thumbTintList = ColorStateList.valueOf(Color.WHITE)
-        bar.progressTintList = ColorStateList.valueOf(0xFF2563EB.toInt())
-        bar.progressBackgroundTintList = ColorStateList.valueOf(0xFFCBD5E1.toInt())
-        bar.thumbTintList = ColorStateList.valueOf(0xFF0EA5E9.toInt())
         bar.progress = sizeProgress
         bar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(sb: SeekBar?, p: Int, fromUser: Boolean) {

@@ -57,6 +57,19 @@ object SciLibrary {
         else -> ctx.assets.open("library/$key")
     }
 
+    // صورة مصغرة للكروت (بتتقلل عشان الشاشة تبقى سريعة)
+    fun thumb(ctx: Context, key: String): Bitmap? = try {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        stream(ctx, key).use { BitmapFactory.decodeStream(it, null, bounds) }
+        val maxSide = maxOf(bounds.outWidth, bounds.outHeight)
+        var sample = 1
+        while (maxSide / (sample * 2) >= 360) sample *= 2
+        val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+        stream(ctx, key).use { BitmapFactory.decodeStream(it, null, opts) }
+    } catch (e: Exception) {
+        null
+    }
+
     // تحميل الصورة بدقة مناسبة للشاشة (مش أكبر من اللازم)
     fun load(ctx: Context, key: String): Bitmap? {
         return try {
