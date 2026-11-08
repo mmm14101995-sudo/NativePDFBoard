@@ -141,12 +141,15 @@ abstract class BaseInkActivity : Activity() {
     }
 
     // زجاج لامع للأزرار: تدرج أبيض وحافة مضيئة
-    private fun glassTile(): GradientDrawable = GradientDrawable(
-        GradientDrawable.Orientation.TOP_BOTTOM,
-        intArrayOf(0x88FFFFFF.toInt(), 0x22FFFFFF)
-    ).apply {
-        cornerRadius = dp(14).toFloat()
-        setStroke(dp(1), 0x44000000)
+    private fun glassTile(): GradientDrawable {
+        val dark = Prefs.dark(this)
+        return GradientDrawable(
+            GradientDrawable.Orientation.TOP_BOTTOM,
+            if (dark) intArrayOf(0x40FFFFFF, 0x12FFFFFF) else intArrayOf(0xCCFFFFFF.toInt(), 0x66E2E8F0)
+        ).apply {
+            cornerRadius = dp(14).toFloat()
+            setStroke(dp(1), if (dark) 0x55FFFFFF else 0x33334155)
+        }
     }
 
     private fun addShape() {
