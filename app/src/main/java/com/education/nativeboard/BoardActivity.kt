@@ -12,7 +12,9 @@ class BoardActivity : BaseInkActivity() {
 
     override fun pageTotal(): Int = doc.pageCount
 
-    override fun docTitle(): String = "سبورة"
+    override fun usesTabs(): Boolean = true
+
+    override fun docTitle(): String = Names.board(this, doc.id, "سبورة")
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

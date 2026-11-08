@@ -13,6 +13,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewOutlineProvider
+import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
@@ -209,7 +210,7 @@ class MainActivity : Activity() {
         info.orientation = LinearLayout.VERTICAL
         info.setPadding(dp(14), 0, dp(8), 0)
         info.addView(label("متابعة القراءة", 11f, MUTED))
-        info.addView(label(if (type == 0) id.substringAfter("__", id) else "السبورة", 16f, INK, true).apply {
+        info.addView(label(if (type == 0) id.substringAfter("__", id) else Names.board(this, id, "السبورة"), 16f, INK, true).apply {
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
             setPadding(0, dp(2), 0, 0)
@@ -276,7 +277,7 @@ class MainActivity : Activity() {
             startActivity(Intent(this, ShelfActivity::class.java).putExtra("idx", lib.idx))
         }
         card.setOnLongClickListener {
-            confirmDeleteLib(lib)
+            itemMenu(lib.name, { renameDialog(lib.name) { n -> Library.rename(this, lib.idx, n); render() } }, { confirmDeleteLib(lib) })
             true
         }
         return card
@@ -337,7 +338,8 @@ class MainActivity : Activity() {
         ripple(this)
         setOnClickListener { openBoard(id) }
         setOnLongClickListener {
-            confirmDeleteBoard(i, id)
+            val cur = Names.board(this@MainActivity, id, "سبورة ${i + 1}")
+            itemMenu(cur, { renameDialog(cur) { n -> Names.setBoard(this@MainActivity, id, n); render() } }, { confirmDeleteBoard(i, id) })
             true
         }
         addView(FrameLayout(this@MainActivity).apply {
@@ -350,7 +352,7 @@ class MainActivity : Activity() {
         addView(LinearLayout(this@MainActivity).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(12), dp(10), dp(12), dp(12))
-            addView(label("سبورة ${i + 1}", 15f, INK, true))
+            addView(label(Names.board(this@MainActivity, id, "سبورة ${i + 1}"), 15f, INK, true))
             addView(label("اضغط للفتح · مطوّل للحذف", 11f, MUTED))
         })
     }
@@ -370,6 +372,30 @@ class MainActivity : Activity() {
     }
 
     // ---------- الأفعال ----------
+
+    // قايمة الضغط المطوّل: إعادة تسمية أو حذف
+    private fun itemMenu(title: String, onRename: () -> Unit, onDelete: () -> Unit) {
+        AlertDialog.Builder(this)
+            .setTitle(title)
+            .setItems(arrayOf("إعادة تسمية", "حذف")) { _, w -> if (w == 0) onRename() else onDelete() }
+            .setNegativeButton("إلغاء", null)
+            .show()
+    }
+
+    private fun renameDialog(current: String, onSave: (String) -> Unit) {
+        val input = EditText(this)
+        input.setText(current)
+        input.setSelection(current.length)
+        input.setPadding(dp(20), dp(12), dp(20), dp(12))
+        AlertDialog.Builder(this)
+            .setView(input)
+            .setPositiveButton("حفظ") { _, _ ->
+                val name = input.text.toString().trim()
+                if (name.isNotEmpty()) onSave(name)
+            }
+            .setNegativeButton("إلغاء", null)
+            .show()
+    }
 
     private fun newLibrary() {
         val libs = Library.all(this)

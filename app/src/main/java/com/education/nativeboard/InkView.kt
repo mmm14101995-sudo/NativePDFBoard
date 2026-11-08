@@ -98,13 +98,6 @@ class InkView(ctx: Context) : View(ctx) {
         c.drawRect(pageRect, paint)
         pageBitmap?.let { c.drawBitmap(it, null, pageRect, null) }
         drawPattern(c)
-        if (!exportMode) {
-            paint.reset()
-            paint.style = Paint.Style.STROKE
-            paint.strokeWidth = 1.5f / zoom
-            paint.color = 0x40000000
-            c.drawRect(pageRect, paint)
-        }
         // لمعة زجاجية خفيفة على الصفحة
         paint.reset()
         paint.shader = LinearGradient(pageRect.left, pageRect.top, pageRect.left, pageRect.top + pageRect.height() * 0.35f, intArrayOf(0x1CFFFFFF, 0x00FFFFFF), null, Shader.TileMode.CLAMP)

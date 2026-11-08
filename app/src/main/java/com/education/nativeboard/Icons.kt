@@ -71,6 +71,10 @@ object Icons {
                 path.moveTo(8f, 8f); path.lineTo(12f, 4f); path.lineTo(16f, 8f)
                 path.moveTo(5f, 12f); path.lineTo(5f, 19f); path.lineTo(19f, 19f); path.lineTo(19f, 12f)
             }
+            "home" -> {
+                path.moveTo(4f, 11f); path.lineTo(12f, 4f); path.lineTo(20f, 11f)
+                path.moveTo(6f, 10f); path.lineTo(6f, 20f); path.lineTo(18f, 20f); path.lineTo(18f, 10f)
+            }
             "expand" -> {
                 path.moveTo(4f, 9f); path.lineTo(4f, 4f); path.lineTo(9f, 4f)
                 path.moveTo(15f, 4f); path.lineTo(20f, 4f); path.lineTo(20f, 9f)

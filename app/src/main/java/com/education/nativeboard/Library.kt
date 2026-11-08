@@ -56,6 +56,11 @@ object Library {
         metaFile(ctx, idx).writeText(JSONObject().put("name", name).put("books", JSONArray(books)).toString())
     }
 
+    fun rename(ctx: Context, idx: Int, name: String) {
+        val lib = get(ctx, idx) ?: return
+        save(ctx, idx, name, lib.books)
+    }
+
     fun addBook(ctx: Context, idx: Int, id: String): Boolean {
         val lib = get(ctx, idx) ?: return false
         if (lib.books.size >= MAX_BOOKS) return false

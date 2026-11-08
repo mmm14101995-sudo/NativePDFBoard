@@ -54,6 +54,8 @@ abstract class BaseInkActivity : Activity() {
     private lateinit var redoBtn: FrameLayout
     private lateinit var eraseBtn: FrameLayout
     private lateinit var sizeDot: View
+    private var tabRow: LinearLayout? = null
+    private var tabScroll: HorizontalScrollView? = null
     private lateinit var handBtn: FrameLayout
     private var sizeProgress = 35
 
@@ -61,6 +63,8 @@ abstract class BaseInkActivity : Activity() {
     abstract fun showPageBitmap(n: Int)
     open fun extraButtons(row: LinearLayout) {}
     open fun docTitle(): String = ""
+    // السبورة بتستخدم تبويبات للصفحات بدل الرقم
+    open fun usesTabs(): Boolean = false
     protected open fun startPage(): Int = 1
     protected open fun onPageShown(n: Int) {}
 
@@ -240,7 +244,7 @@ abstract class BaseInkActivity : Activity() {
         addHistory(bar, WHITE)
         bar.addView(headerSep())
         bar.addView(ibtn("expand", WHITE) { toggleFull() })
-        bar.addView(ibtn("close", WHITE) { closeWithPrompt() })
+        bar.addView(glassBtn("home") { closeWithPrompt() })
         return bar
     }
 
@@ -364,20 +368,36 @@ abstract class BaseInkActivity : Activity() {
     }
 
     private fun addNav(row: LinearLayout) {
-        val pill = LinearLayout(this)
-        pill.orientation = LinearLayout.HORIZONTAL
-        pill.gravity = Gravity.CENTER_VERTICAL
-        pill.setPadding(dp(4), 0, dp(4), 0)
-        pill.background = roundFill(0x140F172A, 20)
-        pill.addView(ibtn("next", ICON) { goPage(pageNo + 1) })
         pageLabel = TextView(this)
         pageLabel.textSize = 13f
         pageLabel.setTextColor(ICON)
         pageLabel.gravity = Gravity.CENTER
         pageLabel.minWidth = dp(48)
-        pill.addView(pageLabel)
-        pill.addView(ibtn("prev", ICON) { goPage(pageNo - 1) })
-        row.addView(pill)
+        if (usesTabs()) {
+            row.addView(ibtn("next", ICON) { goPage(pageNo + 1) })
+            val scroll = HorizontalScrollView(this)
+            scroll.isHorizontalScrollBarEnabled = false
+            val tr = LinearLayout(this)
+            tr.orientation = LinearLayout.HORIZONTAL
+            tr.gravity = Gravity.CENTER_VERTICAL
+            scroll.addView(tr)
+            tabScroll = scroll
+            tabRow = tr
+            row.addView(scroll, LinearLayout.LayoutParams(dp(300), ViewGroup.LayoutParams.WRAP_CONTENT))
+            row.addView(ibtn("prev", ICON) { goPage(pageNo - 1) })
+        } else {
+            tabRow = null
+            tabScroll = null
+            val pill = LinearLayout(this)
+            pill.orientation = LinearLayout.HORIZONTAL
+            pill.gravity = Gravity.CENTER_VERTICAL
+            pill.setPadding(dp(4), 0, dp(4), 0)
+            pill.background = roundFill(0x140F172A, 20)
+            pill.addView(ibtn("next", ICON) { goPage(pageNo + 1) })
+            pill.addView(pageLabel)
+            pill.addView(ibtn("prev", ICON) { goPage(pageNo - 1) })
+            row.addView(pill)
+        }
     }
 
     private fun colorTile(c: Int, onClick: () -> Unit): FrameLayout = FrameLayout(this).apply {
@@ -464,8 +484,8 @@ abstract class BaseInkActivity : Activity() {
                     gravity = Gravity.CENTER
                 })
                 cell.setOnClickListener {
-                    slotPens.add(idx)
-                    slotInk.add(defaultInk(idx))
+                    if (slotPens.size < 5) slotPens.add(idx) else slotPens[4] = idx
+                    if (slotInk.size < 5) slotInk.add(defaultInk(idx)) else slotInk[4] = defaultInk(idx)
                     dlg.dismiss()
                     buildUi()
                 }
@@ -625,6 +645,7 @@ abstract class BaseInkActivity : Activity() {
         penViews.forEachIndexed { i, pv ->
             pv.picked = !view.eraserMode && view.penIndex == slotPens[i]
         }
+        rebuildTabs()
     }
 
     private fun toggleHand() {
@@ -776,6 +797,42 @@ abstract class BaseInkActivity : Activity() {
         showPageBitmap(origPage)
         refreshBar()
         Toast.makeText(this, "اتحفظ في: ${f.path}", Toast.LENGTH_LONG).show()
+    }
+
+    // زرار زجاجي (بيت / غيره)
+    private fun glassBtn(icon: String, onClick: () -> Unit): FrameLayout = FrameLayout(this).apply {
+        layoutParams = LinearLayout.LayoutParams(dp(42), dp(42))
+        background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(0x66FFFFFF, 0x1AFFFFFF)).apply {
+            shape = GradientDrawable.OVAL
+            setStroke(dp(1), 0x88FFFFFF.toInt())
+        }
+        setOnClickListener { onClick() }
+        addView(IconView(this@BaseInkActivity, icon, Color.WHITE), FrameLayout.LayoutParams(dp(22), dp(22), Gravity.CENTER))
+    }
+
+    // تبويب لكل صفحة: "صفحة N"، والتبويب الحالي باللون الكحلي
+    private fun rebuildTabs() {
+        val tr = tabRow ?: return
+        tr.removeAllViews()
+        var selected: View? = null
+        for (n in 1..pageTotal()) {
+            val sel = n == pageNo
+            val t = TextView(this)
+            t.text = "صفحة $n"
+            t.textSize = 12f
+            t.gravity = Gravity.CENTER
+            t.setPadding(dp(12), dp(6), dp(12), dp(6))
+            t.setTextColor(if (sel) Color.WHITE else ICON)
+            t.background = if (sel) headerBg() else roundFill(0x140F172A, 14)
+            t.setOnClickListener { goPage(n) }
+            tr.addView(t, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(dp(3), 0, dp(3), 0)
+            })
+            if (sel) selected = t
+        }
+        val sv = selected
+        val sc = tabScroll
+        if (sv != null && sc != null) sv.post { sc.smoothScrollTo(sv.left, 0) }
     }
 
     protected fun closeWithPrompt() {
