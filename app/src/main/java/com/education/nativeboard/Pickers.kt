@@ -95,6 +95,9 @@ object Pickers {
     // معاينة التسطير (سطور / مربعات / نقط)
     fun patternPreview(ctx: Context, kind: Int, level: Int): View = PatternPreview(ctx, kind, level)
 
+    // معاينة شكل هندسي في كارت الاختيار
+    fun shapePreview(ctx: Context, type: Int): View = ShapePreview(ctx, type)
+
     // معاينة شكل الخريطة الذهنية (مرسومة، من غير كلام)
     fun mindPreview(ctx: Context, nodes: List<MindNode>): View = MindPreview(ctx, nodes)
 }
@@ -170,5 +173,29 @@ class PatternPreview(ctx: Context, private val kind: Int, private val level: Int
                 }
             }
         }
+    }
+}
+
+// رسم شكل هندسي في كارت الاختيار
+class ShapePreview(ctx: Context, private val type: Int) : View(ctx) {
+    private val p = Paint(Paint.ANTI_ALIAS_FLAG)
+
+    override fun onDraw(c: Canvas) {
+        val w = width.toFloat()
+        val h = height.toFloat()
+        if (w <= 0f || h <= 0f) return
+        val m = minOf(w, h) * 0.18f
+        val r = RectF(m, m, w - m, h - m)
+        val path = Shapes.path(type, r)
+        p.reset()
+        p.isAntiAlias = true
+        p.style = Paint.Style.FILL
+        p.color = 0x332563EB
+        c.drawPath(path, p)
+        p.style = Paint.Style.STROKE
+        p.strokeWidth = 3f
+        p.strokeJoin = android.graphics.Paint.Join.ROUND
+        p.color = 0xFF2563EB.toInt()
+        c.drawPath(path, p)
     }
 }
