@@ -174,17 +174,16 @@ class MainActivity : Activity() {
         val h = LinearLayout(this)
         h.orientation = LinearLayout.VERTICAL
         h.setPadding(dp(20), dp(44), dp(20), dp(22))
-        h.background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(NAVY_A, NAVY_B)).apply {
-            val r = dp(28).toFloat()
-            cornerRadii = floatArrayOf(0f, 0f, 0f, 0f, r, r, r, r)
-        }
+        h.background = if (Prefs.dark(this)) roundBg(0x661E293B, 28) else roundBg(0xCCFFFFFF.toInt(), 28)
         val top = LinearLayout(this)
         top.orientation = LinearLayout.HORIZONTAL
         top.gravity = Gravity.CENTER_VERTICAL
         val titles = LinearLayout(this)
         titles.orientation = LinearLayout.VERTICAL
-        titles.addView(label("السبورة والكتب", 24f, Color.WHITE, true))
-        titles.addView(label("$books كتاب  ·  $libs مكتبة  ·  $boards سبورة", 12f, 0xCCFFFFFF.toInt()).apply {
+        val fg = if (Prefs.dark(this)) Color.WHITE else 0xFF0F172A.toInt()
+        val sub = if (Prefs.dark(this)) 0xCCFFFFFF.toInt() else 0x99334155.toInt()
+        titles.addView(label("السبورة والكتب", 24f, fg, true))
+        titles.addView(label("$books كتاب  ·  $libs مكتبة  ·  $boards سبورة", 12f, sub).apply {
             setPadding(0, dp(4), 0, 0)
         })
         top.addView(titles, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
@@ -197,9 +196,10 @@ class MainActivity : Activity() {
         val col = LinearLayout(this)
         col.orientation = LinearLayout.VERTICAL
         col.gravity = Gravity.END
-        val t = label(fmtTime.format(Date()), 20f, Color.WHITE, true)
+        val clockColor = if (Prefs.dark(this)) Color.WHITE else 0xFF0F172A.toInt()
+        val t = label(fmtTime.format(Date()), 20f, clockColor, true)
         t.gravity = Gravity.END
-        val d = label(fmtDate.format(Date()), 11f, 0xCCFFFFFF.toInt())
+        val d = label(fmtDate.format(Date()), 11f, if (Prefs.dark(this)) 0xCCFFFFFF.toInt() else 0x99334155.toInt())
         d.gravity = Gravity.END
         clockTime = t
         clockDate = d

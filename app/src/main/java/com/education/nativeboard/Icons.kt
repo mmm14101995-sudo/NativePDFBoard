@@ -174,6 +174,17 @@ object Icons {
                 path.moveTo(4f, 20f); path.lineTo(11f, 20f); path.lineTo(11f, 13f); path.lineTo(4f, 13f); path.close()
                 path.moveTo(15f, 4f); path.lineTo(21f, 14f); path.lineTo(9f, 14f); path.close()
             }
+            "zoom_in" -> {
+                c.drawCircle(10.5f, 10.5f, 6f, p)
+                path.moveTo(15f, 15f); path.lineTo(20f, 20f)
+                path.moveTo(10.5f, 7.5f); path.lineTo(10.5f, 13.5f)
+                path.moveTo(7.5f, 10.5f); path.lineTo(13.5f, 10.5f)
+            }
+            "zoom_out" -> {
+                c.drawCircle(10.5f, 10.5f, 6f, p)
+                path.moveTo(15f, 15f); path.lineTo(20f, 20f)
+                path.moveTo(7.5f, 10.5f); path.lineTo(13.5f, 10.5f)
+            }
             "home" -> {
                 path.moveTo(4f, 11f); path.lineTo(12f, 4f); path.lineTo(20f, 11f)
                 path.moveTo(6f, 10f); path.lineTo(6f, 20f); path.lineTo(18f, 20f); path.lineTo(18f, 10f)

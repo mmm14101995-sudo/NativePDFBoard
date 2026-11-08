@@ -227,6 +227,13 @@ class InkView(ctx: Context) : View(ctx) {
         onChanged?.invoke()
     }
 
+    // تكبير وتصغير من أزرار الشريط (بنفس حدود اللمس)
+    fun zoomBy(f: Float) {
+        zoom = (zoom * f).coerceIn(0.3f, 5f)
+        clampPan()
+        invalidate()
+    }
+
     // ---------- العناصر فوق الصفحة ----------
 
     private fun objRect(o: PageObj): RectF = RectF(

@@ -93,10 +93,10 @@ abstract class BaseInkActivity : Activity() {
     }
 
     private fun panelColor(): Int = when {
-        Prefs.dark(this) && Prefs.glass(this) -> 0x661E293B
-        Prefs.dark(this) -> 0xF21E293B.toInt()
-        Prefs.glass(this) -> 0x88FFFFFF.toInt()
-        else -> 0xF2F8FAFC.toInt()
+        Prefs.dark(this) && Prefs.glass(this) -> 0x66000000
+        Prefs.dark(this) -> 0xE60A0F1A.toInt()
+        Prefs.glass(this) -> 0xB3FFFFFF.toInt()
+        else -> 0xD9FFFFFF.toInt()
     }
 
     private fun panelBg(r: Int): Drawable =
@@ -170,21 +170,26 @@ abstract class BaseInkActivity : Activity() {
         }
     }
 
-    // كلام صغير تحت الأيقونة (في الوضع العادي بس)
-    protected fun labeled(well: View, text: String): View {
-        if (!labelMode || text.isEmpty()) return well
-        return LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
-            addView(well)
-            addView(TextView(this@BaseInkActivity).apply {
-                this.text = text
-                setTextColor(ICON)
-                textSize = 10f
-                gravity = Gravity.CENTER
-            })
-        }
+    // العمود الأيمن: تراجع وإعادة، تكبير وتصغير، ملء الشاشة، الأشكال
+    private fun rightRail(): View {
+        val col = LinearLayout(this)
+        col.orientation = LinearLayout.VERTICAL
+        col.gravity = Gravity.CENTER_HORIZONTAL
+        col.setPadding(dp(6), dp(10), dp(6), dp(10))
+        col.background = panelBg(18)
+        col.addView(ibtn("undo", ICON) { doUndo() })
+        col.addView(ibtn("redo", ICON) { doRedo() })
+        col.addView(hSep())
+        col.addView(ibtn("zoom_in", ICON) { view.zoomBy(1.25f) })
+        col.addView(ibtn("zoom_out", ICON) { view.zoomBy(0.8f) })
+        col.addView(ibtn("expand", ICON) { toggleFull() })
+        col.addView(hSep())
+        col.addView(ibtn("shape", ICON) { addShape() })
+        return col
     }
+
+    // كلام صغير تحت الأيقونة (في الوضع العادي بس)
+    protected fun labeled(well: View, text: String): View = well
 
     // زرار إجراء للأزرار الإضافية في الكلاس اللي بيورث
     protected fun actionBtn(icon: String, label: String, onClick: () -> Unit): View =
@@ -260,6 +265,9 @@ abstract class BaseInkActivity : Activity() {
                 setMargins(0, 0, dp(8), 0)
             })
             mid.addView(view, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f))
+            mid.addView(rightRail(), LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT).apply {
+                setMargins(dp(8), 0, 0, 0)
+            })
             col.addView(mid, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
             col.addView(bottomBar(), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
                 setMargins(dp(8), 0, dp(8), dp(8))
@@ -274,30 +282,29 @@ abstract class BaseInkActivity : Activity() {
 
     // الشريط العلوي (الكحلي)
     private fun topBar(): View {
+        val dark = Prefs.dark(this)
+        val fg = if (dark) WHITE else ICON
         val bar = LinearLayout(this)
         bar.orientation = LinearLayout.HORIZONTAL
         bar.gravity = Gravity.CENTER_VERTICAL
         bar.setPadding(dp(10), dp(6), dp(10), dp(6))
-        bar.background = headerBg()
-
+        bar.background = if (dark) headerBg() else panelBg(22)
         val logo = FrameLayout(this)
-        logo.background = roundFill(0x33FFFFFF, 10)
-        logo.addView(IconView(this, "board", WHITE), FrameLayout.LayoutParams(dp(22), dp(22), Gravity.CENTER))
+        logo.background = roundFill(if (dark) 0x33FFFFFF else 0x22000000, 10)
+        logo.addView(IconView(this, "board", fg), FrameLayout.LayoutParams(dp(22), dp(22), Gravity.CENTER))
         bar.addView(logo, LinearLayout.LayoutParams(dp(34), dp(34)))
-
         val title = TextView(this)
         title.text = docTitle()
-        title.setTextColor(WHITE)
+        title.setTextColor(fg)
         title.textSize = 16f
         title.setTypeface(title.typeface, android.graphics.Typeface.BOLD)
         title.maxLines = 1
         title.ellipsize = android.text.TextUtils.TruncateAt.END
         title.setPadding(dp(10), 0, dp(6), 0)
-        bar.addView(title, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-
-        addHistory(bar, WHITE)
+        bar.addView(title, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        addHistory(bar, fg)
         bar.addView(headerSep())
-        bar.addView(ibtn("expand", WHITE) { toggleFull() })
+        bar.addView(ibtn("expand", fg) { toggleFull() })
         bar.addView(glassBtn("home") { closeWithPrompt() })
         return bar
     }
@@ -914,7 +921,7 @@ abstract class BaseInkActivity : Activity() {
             setStroke(dp(1), 0x88FFFFFF.toInt())
         }
         setOnClickListener { onClick() }
-        addView(IconView(this@BaseInkActivity, icon, Color.WHITE), FrameLayout.LayoutParams(dp(22), dp(22), Gravity.CENTER))
+        addView(IconView(this@BaseInkActivity, icon, if (Prefs.dark(this@BaseInkActivity)) Color.WHITE else ICON), FrameLayout.LayoutParams(dp(22), dp(22), Gravity.CENTER))
     }
 
     // تبويب لكل صفحة: "صفحة N"، والتبويب الحالي باللون الكحلي
