@@ -74,20 +74,24 @@ class MainActivity : Activity() {
         scroll.isVerticalScrollBarEnabled = false
         scroll.addView(body)
         root.addView(scroll, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT).apply {
-            setMargins(0, 0, 0, dp(84))
+            setMargins(0, 0, dp(96), 0)
         })
         tabBar = LinearLayout(this)
-        tabBar.orientation = LinearLayout.HORIZONTAL
-        tabBar.setPadding(dp(6), dp(6), dp(6), dp(6))
-        root.addView(tabBar, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM).apply {
-            setMargins(dp(12), 0, dp(12), dp(12))
+        tabBar.orientation = LinearLayout.VERTICAL
+        tabBar.setPadding(dp(8), dp(10), dp(8), dp(10))
+        root.addView(tabBar, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.END or Gravity.CENTER_VERTICAL).apply {
+            setMargins(0, 0, dp(12), 0)
         })
         setContentView(root)
     }
 
     override fun onResume() {
         super.onResume()
-        root.setBackgroundColor(BG)
+        if (Prefs.dark(this)) {
+            root.background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(0xFF0A1226.toInt(), 0xFF0F1B38.toInt(), 0xFF0A1226.toInt()))
+        } else {
+            root.setBackgroundColor(BG)
+        }
         render()
         handler.removeCallbacks(tick)
         handler.post(tick)
@@ -208,7 +212,7 @@ class MainActivity : Activity() {
 
     private fun renderTabBar() {
         tabBar.removeAllViews()
-        tabBar.background = roundBg(if (Prefs.dark(this)) 0xF20F172A.toInt() else 0xF2FFFFFF.toInt(), 26)
+        tabBar.background = if (Prefs.dark(this)) MsDesign.glassCard(this, 30, strong = true) else roundBg(0xF2FFFFFF.toInt(), 30)
         lift(tabBar, 8)
         val items = listOf("book" to "القارئ", "library" to "المكتبات", "board" to "السبورات", "settings" to "الإعدادات")
         items.forEachIndexed { i, pair ->
@@ -217,7 +221,7 @@ class MainActivity : Activity() {
             item.orientation = LinearLayout.VERTICAL
             item.gravity = Gravity.CENTER
             item.setPadding(dp(4), dp(8), dp(4), dp(8))
-            item.background = roundBg(if (sel) NAVY_B else 0x00000000, 20)
+            item.background = if (sel) MsDesign.pillIndicator(this) else roundBg(0x00000000, 22)
             ripple(item)
             item.setOnClickListener {
                 tab = i
@@ -227,8 +231,8 @@ class MainActivity : Activity() {
             item.addView(label(pair.second, 11f, if (sel) Color.WHITE else MUTED, sel).apply {
                 setPadding(0, dp(2), 0, 0)
             })
-            tabBar.addView(item, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
-                setMargins(dp(2), 0, dp(2), 0)
+            tabBar.addView(item, LinearLayout.LayoutParams(dp(68), ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(0, dp(4), 0, dp(4))
             })
         }
     }
