@@ -44,6 +44,15 @@ object Icons {
             }
             "next" -> { path.moveTo(15f, 18f); path.lineTo(9f, 12f); path.lineTo(15f, 6f) }
             "prev" -> { path.moveTo(9f, 18f); path.lineTo(15f, 12f); path.lineTo(9f, 6f) }
+            "eraser" -> {
+                path.moveTo(4f, 14f); path.lineTo(11f, 6f); path.lineTo(20f, 15f); path.lineTo(13f, 21f); path.close()
+                path.moveTo(9f, 17.5f); path.lineTo(15.5f, 11f)
+            }
+            "download" -> {
+                path.moveTo(12f, 4f); path.lineTo(12f, 15f)
+                path.moveTo(7f, 10f); path.lineTo(12f, 15f); path.lineTo(17f, 10f)
+                path.moveTo(5f, 19f); path.lineTo(19f, 19f)
+            }
             "expand" -> {
                 path.moveTo(4f, 9f); path.lineTo(4f, 4f); path.lineTo(9f, 4f)
                 path.moveTo(15f, 4f); path.lineTo(20f, 4f); path.lineTo(20f, 9f)

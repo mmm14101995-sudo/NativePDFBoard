@@ -5,6 +5,8 @@ import android.graphics.Color
 import android.graphics.pdf.PdfRenderer
 import android.os.Bundle
 import android.os.ParcelFileDescriptor
+import android.widget.LinearLayout
+import android.widget.Toast
 
 // قارئ PDF: بيفتح على آخر صفحة اتفتحت في الكتاب
 class ReaderActivity : BaseInkActivity() {
@@ -14,6 +16,8 @@ class ReaderActivity : BaseInkActivity() {
     private fun prefs() = getSharedPreferences("reading", MODE_PRIVATE)
 
     override fun pageTotal(): Int = renderer?.pageCount ?: 0
+
+    override fun docTitle(): String = doc.id.substringAfter("__", doc.id)
 
     override fun startPage(): Int = prefs().getInt(doc.id, 1)
 
@@ -33,6 +37,14 @@ class ReaderActivity : BaseInkActivity() {
         renderer = PdfRenderer(pfd!!)
         buildUi()
         view.post { goPage(startPage().coerceIn(1, maxOf(1, pageTotal()))) }
+    }
+
+    override fun extraButtons(row: LinearLayout) {
+        row.addView(actionBtn("download", "حفظ") {
+            Store.save(this, doc)
+            dirty = false
+            Toast.makeText(this, "تم الحفظ", Toast.LENGTH_SHORT).show()
+        })
     }
 
     override fun showPageBitmap(n: Int) {
