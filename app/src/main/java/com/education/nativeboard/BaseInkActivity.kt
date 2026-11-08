@@ -12,6 +12,7 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
@@ -57,6 +58,7 @@ abstract class BaseInkActivity : Activity() {
     private var tabRow: LinearLayout? = null
     private var tabScroll: HorizontalScrollView? = null
     private lateinit var handBtn: FrameLayout
+    private lateinit var selectBtn: FrameLayout
     private var sizeProgress = 35
 
     abstract fun pageTotal(): Int
@@ -169,6 +171,13 @@ abstract class BaseInkActivity : Activity() {
         if (!::view.isInitialized) {
             view = InkView(this).apply {
                 ink = slotInk[0]
+                imageLoader = { k -> SciLibrary.load(this@BaseInkActivity, k) }
+                onObjectsChanged = {
+                    dirty = true
+                    refreshBar()
+                }
+                onObjectLongPress = { i -> showObjectMenu(i) }
+                onCropDone = { x, y, w, h -> onCropped(x, y, w, h) }
                 onBeforeChange = {
                     undo.add(snapshot())
                     redo.clear()
@@ -365,6 +374,10 @@ abstract class BaseInkActivity : Activity() {
         row.addView(labeled(ibtn("trash", tint) { confirmClear() }, "مسح"))
         handBtn = ibtn("hand", tint) { toggleHand() }
         row.addView(labeled(handBtn, "يد"))
+        selectBtn = ibtn("select", tint) { toggleSelect() }
+        row.addView(labeled(selectBtn, "تحديد"))
+        row.addView(labeled(ibtn("note", tint) { addNote() }, "ملاحظة"))
+        row.addView(labeled(ibtn("mind", tint) { addMind() }, "خريطة"))
     }
 
     private fun addNav(row: LinearLayout) {
@@ -555,6 +568,8 @@ abstract class BaseInkActivity : Activity() {
         undo.clear()
         redo.clear()
         view.strokes = doc.strokesOf(n)
+        view.objects = doc.objsOf(n)
+        view.selected = -1
         showPageBitmap(n)
         onPageShown(n)
         view.invalidate()
@@ -634,6 +649,7 @@ abstract class BaseInkActivity : Activity() {
         redoBtn.alpha = if (redo.isEmpty()) 0.35f else 1f
         eraseBtn.alpha = if (view.eraserMode) 1f else 0.5f
         handBtn.alpha = if (view.handMode) 1f else 0.5f
+        selectBtn.alpha = if (view.selectMode) 1f else 0.5f
         colorDot?.background = oval(view.ink)
         colorTiles.forEach { t -> t.background = if (t.tag == view.ink) ring() else null }
         val d = (4 + sizeProgress * 0.36f).toInt()
@@ -785,6 +801,7 @@ abstract class BaseInkActivity : Activity() {
         val h = view.height
         for (n in 1..pageTotal()) {
             view.strokes = doc.strokesOf(n)
+            view.objects = doc.objsOf(n)
             showPageBitmap(n)
             val page = pdf.startPage(PdfDocument.PageInfo.Builder(w, h, n).create())
             view.drawForExport(page.canvas)
@@ -794,6 +811,7 @@ abstract class BaseInkActivity : Activity() {
         f.outputStream().use { pdf.writeTo(it) }
         pdf.close()
         view.strokes = doc.strokesOf(origPage)
+        view.objects = doc.objsOf(origPage)
         showPageBitmap(origPage)
         refreshBar()
         Toast.makeText(this, "اتحفظ في: ${f.path}", Toast.LENGTH_LONG).show()
@@ -833,6 +851,188 @@ abstract class BaseInkActivity : Activity() {
         val sv = selected
         val sc = tabScroll
         if (sv != null && sc != null) sv.post { sc.smoothScrollTo(sv.left, 0) }
+    }
+
+    // ---------- العناصر: ملاحظات وخرايط وقص ----------
+
+    private fun toggleSelect() {
+        view.selectMode = !view.selectMode
+        if (view.selectMode) {
+            view.eraserMode = false
+            view.handMode = false
+            view.cropMode = false
+        }
+        refreshBar()
+    }
+
+    private fun addNote() {
+        val list = view.objects
+        list.add(PageObj("note", 0.36f, 0.36f, 0.24f, 0.18f, "اكتب هنا"))
+        view.selected = list.size - 1
+        view.selectMode = true
+        dirty = true
+        view.invalidate()
+        refreshBar()
+        editNoteText(list.size - 1)
+    }
+
+    private fun editNoteText(i: Int) {
+        val o = view.objects.getOrNull(i) ?: return
+        editText("نص الملاحظة", o.text, true) { t ->
+            o.text = t
+            dirty = true
+            view.invalidate()
+        }
+    }
+
+    private fun editText(title: String, current: String, multi: Boolean, onSave: (String) -> Unit) {
+        val input = EditText(this)
+        input.setText(current)
+        input.setSelection(current.length)
+        if (multi) {
+            input.minLines = 3
+            input.gravity = Gravity.TOP or Gravity.START
+        }
+        input.setPadding(dp(20), dp(12), dp(20), dp(12))
+        AlertDialog.Builder(this)
+            .setTitle(title)
+            .setView(input)
+            .setPositiveButton("حفظ") { _, _ -> onSave(input.text.toString().trim()) }
+            .setNegativeButton("إلغاء", null)
+            .show()
+    }
+
+    private fun addMind() {
+        val items = arrayOf("خريطة دايرية", "شجرة", "أربع فقاعات")
+        AlertDialog.Builder(this)
+            .setTitle("اختار القالب")
+            .setItems(items) { _, k ->
+                view.objects.add(PageObj("mind", 0.25f, 0.3f, 0.5f, 0.42f, MindMap.encode(MindMap.template(k))))
+                view.selected = view.objects.size - 1
+                view.selectMode = true
+                dirty = true
+                view.invalidate()
+                refreshBar()
+            }
+            .show()
+    }
+
+    // قايمة الضغط المطوّل على العنصر
+    private fun showObjectMenu(i: Int) {
+        val o = view.objects.getOrNull(i) ?: return
+        val items = ArrayList<String>()
+        if (o.kind == "note") items.add("تعديل النص")
+        if (o.kind == "mind") {
+            items.add("تعديل فرع")
+            items.add("إضافة فرع")
+        }
+        items.add("حذف")
+        val labels: Array<CharSequence> = items.map { it as CharSequence }.toTypedArray()
+        AlertDialog.Builder(this)
+            .setItems(labels) { _, w ->
+                when (labels[w]) {
+                    "تعديل النص" -> editNoteText(i)
+                    "تعديل فرع" -> pickNode(i) { idx -> renameNode(i, idx) }
+                    "إضافة فرع" -> pickNode(i) { idx -> addChild(i, idx) }
+                    "حذف" -> deleteObject(i)
+                    else -> Unit
+                }
+            }
+            .show()
+    }
+
+    private fun pickNode(i: Int, onPick: (Int) -> Unit) {
+        val nodes = MindMap.decode(view.objects[i].text)
+        if (nodes.isEmpty()) return
+        val labels = ArrayList<CharSequence>()
+        nodes.forEach { labels.add(it.text.ifBlank { "…" }) }
+        AlertDialog.Builder(this)
+            .setItems(labels.toTypedArray()) { _, w -> onPick(w) }
+            .show()
+    }
+
+    private fun renameNode(i: Int, idx: Int) {
+        val o = view.objects[i]
+        val nodes = MindMap.decode(o.text)
+        val node = nodes.getOrNull(idx) ?: return
+        editText("اسم الفرع", node.text, false) { t ->
+            node.text = t
+            o.text = MindMap.encode(nodes)
+            dirty = true
+            view.invalidate()
+        }
+    }
+
+    private fun addChild(i: Int, parent: Int) {
+        val o = view.objects[i]
+        val nodes = MindMap.decode(o.text)
+        val p = nodes.getOrNull(parent) ?: return
+        val newIdx = nodes.size
+        val k = nodes.size
+        val nx = (p.x + (if (p.x < 0.6f) 0.22f else -0.22f)).coerceIn(0.05f, 0.95f)
+        val ny = (p.y + (if (k % 2 == 0) 0.2f else -0.2f)).coerceIn(0.05f, 0.95f)
+        nodes.add(MindNode("فرع جديد", nx, ny, parent))
+        o.text = MindMap.encode(nodes)
+        dirty = true
+        view.invalidate()
+        renameNode(i, newIdx)
+    }
+
+    private fun deleteObject(i: Int) {
+        if (i !in view.objects.indices) return
+        view.objects.removeAt(i)
+        view.selected = -1
+        dirty = true
+        view.invalidate()
+        refreshBar()
+    }
+
+    // القص: بنستنى المستخدم يحدد المنطقة من صفحة الـ PDF
+    protected fun startCrop() {
+        if (view.pageBitmap == null) {
+            Toast.makeText(this, "مفيش صفحة مفتوحة للقص", Toast.LENGTH_SHORT).show()
+            return
+        }
+        view.selectMode = false
+        view.eraserMode = false
+        view.cropMode = true
+        Toast.makeText(this, "حدد الجزء اللي عايز تقصه بإصبعك", Toast.LENGTH_LONG).show()
+        refreshBar()
+    }
+
+    private fun onCropped(x: Float, y: Float, w: Float, h: Float) {
+        val src = view.pageBitmap ?: return
+        val sx = (x * src.width).toInt().coerceIn(0, src.width - 1)
+        val sy = (y * src.height).toInt().coerceIn(0, src.height - 1)
+        val sw = (w * src.width).toInt().coerceIn(1, src.width - sx)
+        val sh = (h * src.height).toInt().coerceIn(1, src.height - sy)
+        val crop = Bitmap.createBitmap(src, sx, sy, sw, sh)
+        val dir = File(filesDir, "crops").apply { mkdirs() }
+        val name = "crop_" + System.currentTimeMillis() + ".png"
+        File(dir, name).outputStream().use { crop.compress(Bitmap.CompressFormat.PNG, 95, it) }
+        pickBoardForCrop("crop:" + name, sw.toFloat() / sh.toFloat())
+    }
+
+    // نختار السبورة اللي هتتحط فيها الصورة المقصوصة
+    private fun pickBoardForCrop(key: String, aspect: Float) {
+        val ids = Store.listBoards(this)
+        val labels = ArrayList<CharSequence>()
+        ids.forEach { labels.add(Names.board(this, it, "سبورة")) }
+        labels.add("＋ سبورة جديدة")
+        AlertDialog.Builder(this)
+            .setTitle("أضيف القص لأنهي سبورة؟")
+            .setItems(labels.toTypedArray()) { _, w ->
+                val id = if (w < ids.size) ids[w] else "board_" + System.currentTimeMillis()
+                val target = Store.load(this, id, true)
+                if (target.pageCount < 1) target.pageCount = 1
+                // الطول بيتحسب من نسبة الصورة (الصفحة تقريباً A4)
+                val hN = 0.5f / aspect / 1.414f
+                target.objsOf(1).add(PageObj("image", 0.25f, 0.2f, 0.5f, hN, "", key))
+                Store.save(this, target)
+                Toast.makeText(this, "اتضافت الصورة للسبورة", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("إلغاء", null)
+            .show()
     }
 
     protected fun closeWithPrompt() {

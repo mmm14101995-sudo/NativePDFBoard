@@ -13,6 +13,9 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.PointF
 import android.graphics.RectF
+import android.text.StaticLayout
+import android.text.TextPaint
+import android.text.TextUtils
 import android.view.MotionEvent
 import android.view.View
 
@@ -30,6 +33,28 @@ class InkView(ctx: Context) : View(ctx) {
     var pattern = 0
     var patternLevel = 1
     private var exportMode = false
+    // العناصر فوق الصفحة: صور وملاحظات وخرايط، وتحديد وقص
+    var objects: ArrayList<PageObj> = ArrayList()
+    var imageLoader: ((String) -> Bitmap?)? = null
+    var selectMode = false
+    var cropMode = false
+    var selected = -1
+    var onObjectsChanged: (() -> Unit)? = null
+    var onObjectLongPress: ((Int) -> Unit)? = null
+    var onCropDone: ((Float, Float, Float, Float) -> Unit)? = null
+    private val bmpCache = HashMap<String, Bitmap?>()
+    private var objDrag = 0
+    private var objMoved = false
+    private var objDownAt = 0L
+    private var objLastX = 0f
+    private var objLastY = 0f
+    private var objSX = 0f
+    private var objSY = 0f
+    private var cropping = false
+    private var cropX0 = 0f
+    private var cropY0 = 0f
+    private var cropX1 = 0f
+    private var cropY1 = 0f
 
     // نداءات للشاشة الأب: قبل أي تعديل (عشان التراجع)، وبعد أي تعديل (عشان الحفظ)
     var onBeforeChange: (() -> Unit)? = null
@@ -103,6 +128,7 @@ class InkView(ctx: Context) : View(ctx) {
         paint.shader = LinearGradient(pageRect.left, pageRect.top, pageRect.left, pageRect.top + pageRect.height() * 0.35f, intArrayOf(0x1CFFFFFF, 0x00FFFFFF), null, Shader.TileMode.CLAMP)
         c.drawRect(pageRect, paint)
         paint.shader = null
+        drawObjects(c)
         val all = ArrayList(strokes)
         current?.let { all.add(it) }
         // التظليل تحت، والكتابة فوقه
@@ -163,6 +189,213 @@ class InkView(ctx: Context) : View(ctx) {
             return
         }
         c.drawPath(path, paint)
+    }
+
+    // ---------- العناصر فوق الصفحة ----------
+
+    private fun objRect(o: PageObj): RectF = RectF(
+        pageRect.left + o.x * pageRect.width(),
+        pageRect.top + o.y * pageRect.height(),
+        pageRect.left + (o.x + o.w) * pageRect.width(),
+        pageRect.top + (o.y + o.h) * pageRect.height()
+    )
+
+    private fun drawObjects(c: Canvas) {
+        if (pageRect.width() <= 0f) return
+        for (i in objects.indices) {
+            val o = objects[i]
+            val r = objRect(o)
+            when (o.kind) {
+                "image" -> drawImageObj(c, o, r)
+                "note" -> drawNoteObj(c, o, r)
+                "mind" -> drawMindObj(c, o, r)
+            }
+            if (i == selected) {
+                paint.reset()
+                paint.style = Paint.Style.STROKE
+                paint.strokeWidth = 2f / zoom
+                paint.color = 0xFF2563EB.toInt()
+                paint.pathEffect = DashPathEffect(floatArrayOf(10f / zoom, 6f / zoom), 0f)
+                c.drawRect(r, paint)
+                paint.pathEffect = null
+                paint.style = Paint.Style.FILL
+                c.drawCircle(r.right, r.bottom, 9f / zoom, paint)
+            }
+        }
+        if (cropping) {
+            val r = RectF(
+                pageRect.left + minOf(cropX0, cropX1) * pageRect.width(),
+                pageRect.top + minOf(cropY0, cropY1) * pageRect.height(),
+                pageRect.left + maxOf(cropX0, cropX1) * pageRect.width(),
+                pageRect.top + maxOf(cropY0, cropY1) * pageRect.height()
+            )
+            paint.reset()
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = 2f / zoom
+            paint.color = 0xFF2563EB.toInt()
+            paint.pathEffect = DashPathEffect(floatArrayOf(8f / zoom, 6f / zoom), 0f)
+            c.drawRect(r, paint)
+            paint.pathEffect = null
+        }
+    }
+
+    private fun drawImageObj(c: Canvas, o: PageObj, r: RectF) {
+        val bmp = bmpCache.getOrPut(o.key) { imageLoader?.invoke(o.key) } ?: return
+        paint.reset()
+        c.drawBitmap(bmp, null, r, paint)
+    }
+
+    private fun drawNoteObj(c: Canvas, o: PageObj, r: RectF) {
+        val pw = pageRect.width()
+        paint.reset()
+        paint.style = Paint.Style.FILL
+        paint.color = 0xFFFEF08A.toInt()
+        c.drawRoundRect(r, pw * 0.01f, pw * 0.01f, paint)
+        val pad = pw * 0.012f
+        val tp = TextPaint(Paint.ANTI_ALIAS_FLAG)
+        tp.color = 0xFF1E293B.toInt()
+        tp.textSize = pw * 0.028f
+        val wrap = (r.width() - 2 * pad).toInt().coerceAtLeast(10)
+        val layout = StaticLayout.Builder.obtain(o.text, 0, o.text.length, tp, wrap).build()
+        c.save()
+        c.translate(r.left + pad, r.top + pad)
+        c.clipRect(0f, 0f, wrap.toFloat(), r.height() - 2 * pad)
+        layout.draw(c)
+        c.restore()
+    }
+
+    private fun drawMindObj(c: Canvas, o: PageObj, r: RectF) {
+        val nodes = MindMap.decode(o.text)
+        if (nodes.isEmpty()) return
+        val pw = pageRect.width()
+        val tp = TextPaint(Paint.ANTI_ALIAS_FLAG)
+        tp.textSize = pw * 0.022f
+        val lp = Paint(Paint.ANTI_ALIAS_FLAG)
+        lp.style = Paint.Style.STROKE
+        lp.strokeWidth = pw * 0.003f
+        lp.color = 0xFF64748B.toInt()
+        val pad = pw * 0.012f
+        val centers = nodes.map { PointF(r.left + it.x * r.width(), r.top + it.y * r.height()) }
+        for (i in nodes.indices) {
+            val p = nodes[i].parent
+            if (p in nodes.indices) c.drawLine(centers[p].x, centers[p].y, centers[i].x, centers[i].y, lp)
+        }
+        for (i in nodes.indices) {
+            val pt = centers[i]
+            val raw = if (nodes[i].text.isBlank()) "…" else nodes[i].text
+            val label = TextUtils.ellipsize(raw, tp, r.width() * 0.3f, TextUtils.TruncateAt.END).toString()
+            val tw = tp.measureText(label)
+            val fm = tp.fontMetrics
+            val box = RectF(pt.x - tw / 2 - pad, pt.y - tp.textSize / 2 - pad, pt.x + tw / 2 + pad, pt.y + tp.textSize / 2 + pad)
+            paint.reset()
+            paint.style = Paint.Style.FILL
+            paint.color = if (i == 0) 0xFF2563EB.toInt() else 0xFFFFFFFF.toInt()
+            c.drawRoundRect(box, pad * 2, pad * 2, paint)
+            tp.color = if (i == 0) Color.WHITE else 0xFF0F172A.toInt()
+            c.drawText(label, pt.x - tw / 2, pt.y - (fm.ascent + fm.descent) / 2, tp)
+        }
+    }
+
+    // اللمس في وضع التحديد أو القص: تحريك، تكبير من الزاوية، تحديد منطقة، أو تحريك الصفحة
+    private fun objectTouch(e: MotionEvent): Boolean {
+        if (!selectMode && !cropMode) return false
+        if (e.pointerCount > 1) {
+            objDrag = 0
+            cropping = false
+            return false
+        }
+        val n = toNorm(e.x, e.y)
+        val nx = n[0]
+        val ny = n[1]
+        val tol = (24f / zoom) / pageRect.width().coerceAtLeast(1f)
+        when (e.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                objSX = e.x
+                objSY = e.y
+                objLastX = nx
+                objLastY = ny
+                objMoved = false
+                objDownAt = System.currentTimeMillis()
+                if (cropMode) {
+                    cropping = true
+                    cropX0 = nx
+                    cropY0 = ny
+                    cropX1 = nx
+                    cropY1 = ny
+                    invalidate()
+                    return true
+                }
+                val sel = objects.getOrNull(selected)
+                if (sel != null && Math.abs(nx - (sel.x + sel.w)) < tol && Math.abs(ny - (sel.y + sel.h)) < tol) {
+                    objDrag = 2
+                } else {
+                    selected = -1
+                    for (i in objects.indices.reversed()) {
+                        val o = objects[i]
+                        if (nx >= o.x && nx <= o.x + o.w && ny >= o.y && ny <= o.y + o.h) {
+                            selected = i
+                            break
+                        }
+                    }
+                    objDrag = if (selected >= 0) 1 else 3
+                }
+                invalidate()
+                return true
+            }
+            MotionEvent.ACTION_MOVE -> {
+                if (cropping) {
+                    cropX1 = nx
+                    cropY1 = ny
+                    invalidate()
+                    return true
+                }
+                val o = objects.getOrNull(selected)
+                when (objDrag) {
+                    1 -> if (o != null) {
+                        o.x += nx - objLastX
+                        o.y += ny - objLastY
+                        objMoved = true
+                    }
+                    2 -> if (o != null) {
+                        o.w = (o.w + nx - objLastX).coerceAtLeast(0.04f)
+                        o.h = (o.h + ny - objLastY).coerceAtLeast(0.04f)
+                        objMoved = true
+                    }
+                    3 -> {
+                        panX += e.x - objSX
+                        panY += e.y - objSY
+                        clampPan()
+                    }
+                }
+                objLastX = nx
+                objLastY = ny
+                objSX = e.x
+                objSY = e.y
+                invalidate()
+                return true
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                if (cropping) {
+                    cropping = false
+                    cropMode = false
+                    val x = minOf(cropX0, cropX1)
+                    val y = minOf(cropY0, cropY1)
+                    val w = Math.abs(cropX1 - cropX0)
+                    val h = Math.abs(cropY1 - cropY0)
+                    if (w > 0.01f && h > 0.01f) onCropDone?.invoke(x, y, w, h)
+                } else if (objDrag == 1 || objDrag == 2) {
+                    if (objMoved) {
+                        onObjectsChanged?.invoke()
+                    } else if (System.currentTimeMillis() - objDownAt > 450 && selected >= 0) {
+                        onObjectLongPress?.invoke(selected)
+                    }
+                }
+                objDrag = 0
+                invalidate()
+                return true
+            }
+        }
+        return false
     }
 
     // التسطير: بيغطي الشاشة كلها (مش الصفحة بس)، وبيكبر ويصغر مع الكتابة
@@ -470,6 +703,7 @@ class InkView(ctx: Context) : View(ctx) {
     }
 
     override fun onTouchEvent(e: MotionEvent): Boolean {
+        if (objectTouch(e)) return true
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
                 val i = e.actionIndex

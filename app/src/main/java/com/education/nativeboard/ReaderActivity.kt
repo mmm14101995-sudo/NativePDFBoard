@@ -41,6 +41,7 @@ class ReaderActivity : BaseInkActivity() {
     }
 
     override fun extraButtons(row: LinearLayout) {
+        row.addView(actionBtn("crop", "قص") { startCrop() })
         row.addView(actionBtn("download", "حفظ") {
             Store.save(this, doc)
             dirty = false

@@ -12,8 +12,12 @@ class Doc(val id: String, val isBoard: Boolean) {
     val pages = HashMap<Int, ArrayList<Stroke>>()
     // صورة من المكتبة العلمية لكل صفحة (اسم الملف جوه assets/library)
     val images = HashMap<Int, String>()
+    // العناصر فوق كل صفحة (صور قص، ملاحظات، خرايط)
+    val objs = HashMap<Int, ArrayList<PageObj>>()
 
     fun strokesOf(n: Int): ArrayList<Stroke> = pages.getOrPut(n) { ArrayList() }
+
+    fun objsOf(n: Int): ArrayList<PageObj> = objs.getOrPut(n) { ArrayList() }
 }
 
 // التخزين كله على الجهاز: ملفات PDF في فولدر، والكتابة في JSON
@@ -56,6 +60,17 @@ object Store {
                     doc.pages[k.toInt()] = list
                 }
             }
+            val ob = o.optJSONObject("objs")
+            if (ob != null) {
+                val ks = ob.keys()
+                while (ks.hasNext()) {
+                    val k = ks.next()
+                    val arr = ob.getJSONArray(k)
+                    val list = ArrayList<PageObj>()
+                    for (i in 0 until arr.length()) list.add(PageObj.fromJson(arr.getJSONObject(i)))
+                    doc.objs[k.toInt()] = list
+                }
+            }
         }
         return doc
     }
@@ -67,7 +82,11 @@ object Store {
         }
         val imgs = JSONObject()
         doc.images.forEach { (n, f) -> imgs.put(n.toString(), f) }
-        val o = JSONObject().put("bg", doc.bg).put("count", doc.pageCount).put("pages", pages).put("imgs", imgs)
+        val objsJson = JSONObject()
+        doc.objs.forEach { (n, list) ->
+            if (list.isNotEmpty()) objsJson.put(n.toString(), JSONArray(list.map { it.toJson() }))
+        }
+        val o = JSONObject().put("bg", doc.bg).put("count", doc.pageCount).put("pages", pages).put("imgs", imgs).put("objs", objsJson)
         jsonFile(ctx, doc.id).writeText(o.toString())
     }
 

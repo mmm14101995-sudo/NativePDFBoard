@@ -2,6 +2,7 @@ package com.education.nativeboard
 
 import android.content.Context
 import android.graphics.Canvas
+import android.graphics.DashPathEffect
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
@@ -70,6 +71,32 @@ object Icons {
                 path.moveTo(12f, 15f); path.lineTo(12f, 4f)
                 path.moveTo(8f, 8f); path.lineTo(12f, 4f); path.lineTo(16f, 8f)
                 path.moveTo(5f, 12f); path.lineTo(5f, 19f); path.lineTo(19f, 19f); path.lineTo(19f, 12f)
+            }
+            "select" -> {
+                p.pathEffect = DashPathEffect(floatArrayOf(3f, 2.5f), 0f)
+                c.drawRect(RectF(4f, 4f, 20f, 20f), p)
+                p.pathEffect = null
+            }
+            "note" -> {
+                path.moveTo(5f, 4f); path.lineTo(19f, 4f); path.lineTo(19f, 15f); path.lineTo(15f, 19f); path.lineTo(5f, 19f); path.close()
+                path.moveTo(15f, 19f); path.lineTo(15f, 15f); path.lineTo(19f, 15f)
+            }
+            "mind" -> {
+                c.drawCircle(12f, 12f, 3f, p)
+                c.drawCircle(5f, 6f, 2f, p)
+                c.drawCircle(19f, 6f, 2f, p)
+                c.drawCircle(5f, 18f, 2f, p)
+                c.drawCircle(19f, 18f, 2f, p)
+                path.moveTo(9f, 10.5f); path.lineTo(6.8f, 7.6f)
+                path.moveTo(15f, 10.5f); path.lineTo(17.2f, 7.6f)
+                path.moveTo(9f, 13.5f); path.lineTo(6.8f, 16.4f)
+                path.moveTo(15f, 13.5f); path.lineTo(17.2f, 16.4f)
+            }
+            "crop" -> {
+                path.moveTo(4f, 8f); path.lineTo(4f, 4f); path.lineTo(8f, 4f)
+                path.moveTo(16f, 4f); path.lineTo(20f, 4f); path.lineTo(20f, 8f)
+                path.moveTo(20f, 16f); path.lineTo(20f, 20f); path.lineTo(16f, 20f)
+                path.moveTo(8f, 20f); path.lineTo(4f, 20f); path.lineTo(4f, 16f)
             }
             "home" -> {
                 path.moveTo(4f, 11f); path.lineTo(12f, 4f); path.lineTo(20f, 11f)
