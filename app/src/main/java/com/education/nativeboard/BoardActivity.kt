@@ -49,10 +49,10 @@ class BoardActivity : BaseInkActivity() {
 
     // الأزرار الإضافية للسبورة (بكلام صغير في الوضع العادي)
     override fun extraButtons(row: LinearLayout) {
-        row.addView(actionBtn("plus", "صفحة") { addPage() })
-        row.addView(actionBtn("palette", "الخلفية") { pickBackground() })
-        row.addView(actionBtn("library", "مكتبة") { pickFromLibrary() })
-        row.addView(actionBtn("lines", "تسطير") { pickPattern() })
+        row.addView(ibtn("plus") { addPage() })
+        row.addView(ibtn("palette") { pickBackground() })
+        row.addView(ibtn("library") { pickFromLibrary() })
+        row.addView(ibtn("lines") { pickPattern() })
     }
 
     private fun addPage() {

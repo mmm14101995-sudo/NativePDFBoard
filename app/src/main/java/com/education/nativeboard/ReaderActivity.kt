@@ -26,6 +26,7 @@ class ReaderActivity : BaseInkActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        setTheme(Prefs.themeRes(this))
         super.onCreate(savedInstanceState)
         Ui.immersive(this)
         val id = intent.getStringExtra("id") ?: run {
@@ -41,8 +42,8 @@ class ReaderActivity : BaseInkActivity() {
     }
 
     override fun extraButtons(row: LinearLayout) {
-        row.addView(actionBtn("crop", "قص") { startCrop() })
-        row.addView(actionBtn("download", "حفظ") {
+        row.addView(ibtn("crop") { startCrop() })
+        row.addView(ibtn("download") {
             Store.save(this, doc)
             dirty = false
             Toast.makeText(this, "تم الحفظ", Toast.LENGTH_SHORT).show()
